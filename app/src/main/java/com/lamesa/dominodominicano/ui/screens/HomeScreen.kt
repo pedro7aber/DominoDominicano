@@ -55,6 +55,12 @@ fun HomeScreen(
             ) {
                 Text("Ajustes")
             }
+
+            Text(
+                "Meta por defecto: 200 pts · Conteo de todas las fichas",
+                color = Color.White.copy(alpha = 0.6f),
+                fontSize = 12.sp
+            )
         }
     }
 }
