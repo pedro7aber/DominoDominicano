@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Dominó Dominicano</string>
+    <string name="settings">Ajustes</string>
+    <string name="language">Idioma</string>
+    <string name="language_spanish">Español</string>
+    <string name="language_english">English</string>
+    <string name="home">Inicio</string>
+    <string name="welcome_message">Bienvenido a Dominó Dominicano de Élite</string>
+    <string name="play">Jugar</string>
+    <string name="new_game">Nueva Partida</string>
+    <string name="menu">Menú</string>
+    <string name="rules">Regla</string>
+    <string name="partner">Compañero</string>
+    <string name="you">Tú</string>
+    <string name="left_player">El de arriba</string>
+    <string name="right_player">El de abajo</string>
+    <string name="your_turn">Tu turno</string>
+    <string name="passes">Pases</string>
+    <string name="hand">Mano</string>
+    <string name="us">Nosotros</string>
+    <string name="them">Ellos</string>
+</resources>
