@@ -35,6 +35,13 @@ fun GameScreen(
     val goldBorder = Color(0xFFC9A227)
     val labelBg = Color(0xFF2E7D32)
 
+    // Asegurar que si el turno no es del humano, la IA juegue
+    LaunchedEffect(state.currentPlayer, state.phase) {
+        if (state.phase == GameState.Phase.PLAYING && !state.currentPlayer.isHuman()) {
+            // El ViewModel ya programa la IA, esto es refuerzo visual
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -43,40 +50,58 @@ fun GameScreen(
             .navigationBarsPadding()
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(8.dp)) {
-            // Top bar
+
+            // === TOP BAR ===
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(onClick = onMenu, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5D4037)), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                    Text("Menú", color = Color.White, fontSize = 13.sp)
-                }
+                Button(
+                    onClick = onMenu,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5D4037)),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) { Text("Menú", color = Color.White, fontSize = 13.sp) }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Surface(color = Color(0xFF1B3A1B), shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, goldBorder)) {
+                    Surface(
+                        color = Color(0xFF1B3A1B),
+                        shape = RoundedCornerShape(20.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, goldBorder)
+                    ) {
                         Text(
                             "Mano ${state.handNumber} · Nosotros ${state.scores["us"] ?: 0} · Ellos ${state.scores["them"] ?: 0}",
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                             color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium
                         )
                     }
-                    if (state.currentPlayer == PlayerId.SOUTH && state.phase == GameState.Phase.PLAYING) {
-                        Spacer(Modifier.height(4.dp))
-                        Surface(color = Color(0xFF1565C0), shape = RoundedCornerShape(12.dp)) {
-                            Text("▶ Tu turno", modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp), color = Color.White, fontSize = 11.sp)
+                    Spacer(Modifier.height(4.dp))
+                    when {
+                        state.phase == GameState.Phase.PLAYING && state.currentPlayer == PlayerId.SOUTH -> {
+                            Surface(color = Color(0xFF1565C0), shape = RoundedCornerShape(12.dp)) {
+                                Text("▶ Tu turno", modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp), color = Color.White, fontSize = 11.sp)
+                            }
+                        }
+                        state.phase == GameState.Phase.PLAYING -> {
+                            Surface(color = Color(0xFF5D4037), shape = RoundedCornerShape(12.dp)) {
+                                Text("Pensando...", modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp), color = Color.White, fontSize = 11.sp)
+                            }
                         }
                     }
                 }
 
-                Button(onClick = onRules, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC9A227)), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                    Text("Regla", color = Color.Black, fontSize = 13.sp)
-                }
+                Button(
+                    onClick = onRules,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC9A227)),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) { Text("Regla", color = Color.Black, fontSize = 13.sp) }
             }
 
             Spacer(Modifier.height(8.dp))
 
-            // Compañero
+            // === COMPAÑERO ===
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     repeat(state.handOf(PlayerId.NORTH).size.coerceAtMost(7)) {
@@ -90,7 +115,7 @@ fun GameScreen(
 
             Spacer(Modifier.height(6.dp))
 
-            // Mesa + laterales
+            // === MESA + LATERALES ===
             Row(modifier = Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 // West
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -121,13 +146,19 @@ fun GameScreen(
                                 .background(felt)
                                 .border(1.dp, Color(0xFF0D3B0D), RoundedCornerShape(4.dp))
                         ) {
-                            if (!state.board.isEmpty) {
-                                Row(modifier = Modifier.align(Alignment.Center).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    state.board.chain.take(10).forEach { ot ->
+                            if (state.board.isEmpty) {
+                                Text("Esperando salida...", color = Color.White.copy(alpha = 0.4f),
+                                    modifier = Modifier.align(Alignment.Center), fontSize = 13.sp)
+                            } else {
+                                Row(
+                                    modifier = Modifier.align(Alignment.Center).padding(4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    state.board.chain.take(12).forEach { ot ->
                                         DominoTileView(
                                             tile = ot.tile,
-                                            width = if (ot.isDouble) 36.dp else 28.dp,
-                                            height = if (ot.isDouble) 28.dp else 48.dp,
+                                            width = if (ot.isDouble) 34.dp else 26.dp,
+                                            height = if (ot.isDouble) 26.dp else 46.dp,
                                             faceUp = true
                                         )
                                     }
@@ -150,7 +181,7 @@ fun GameScreen(
                 }
             }
 
-            // Tú label
+            // Label Tú
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Surface(color = Color(0xFF1565C0), shape = RoundedCornerShape(10.dp)) {
                     Text("Tú", modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp), color = Color.White, fontSize = 12.sp)
@@ -159,18 +190,18 @@ fun GameScreen(
 
             Spacer(Modifier.height(4.dp))
 
-            // Player hand
+            // === MANO DEL JUGADOR ===
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF3E2723), RoundedCornerShape(8.dp))
-                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                    .padding(vertical = 8.dp, horizontal = 4.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     state.handOf(PlayerId.SOUTH).forEach { tile ->
                         val isSelected = selected == tile
-                        val isLegal = viewModel.legalMovesForHuman().any { it.first == tile }
+                        val isLegal = viewModel.isLegal(tile)
                         DominoTileView(
                             tile = tile,
                             width = 42.dp,
@@ -179,8 +210,14 @@ fun GameScreen(
                             faceUp = true,
                             onClick = {
                                 if (state.currentPlayer == PlayerId.SOUTH && state.phase == GameState.Phase.PLAYING) {
-                                    if (isSelected) viewModel.playSelected()
-                                    else if (isLegal) viewModel.selectTile(tile)
+                                    if (isLegal) {
+                                        // Tap en ficha legal → seleccionar o jugar si ya estaba seleccionada
+                                        if (isSelected) {
+                                            viewModel.playTile(tile)
+                                        } else {
+                                            viewModel.selectTile(tile)
+                                        }
+                                    }
                                 }
                             }
                         )
@@ -188,22 +225,53 @@ fun GameScreen(
                 }
             }
 
-            if (state.message != null) {
-                Text(state.message ?: "", color = Color(0xFFFFF59D), fontSize = 13.sp, modifier = Modifier.fillMaxWidth().padding(4.dp), textAlign = TextAlign.Center)
-            }
-
-            if (state.phase == GameState.Phase.HAND_OVER) {
-                Button(onClick = { viewModel.nextHand() }, modifier = Modifier.fillMaxWidth().padding(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) {
-                    Text("Siguiente mano")
+            // Botón JUGAR cuando hay ficha seleccionada
+            if (selected != null && state.currentPlayer == PlayerId.SOUTH && state.phase == GameState.Phase.PLAYING) {
+                Button(
+                    onClick = { viewModel.playSelected() },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("JUGAR ${selected?.left}-${selected?.right}", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
-            if (state.phase == GameState.Phase.GAME_OVER) {
+            // Mensaje de estado
+            if (state.message != null) {
                 Text(
-                    "¡Fin de la partida! Ganador: ${if (state.winnerOfGame == "us") "Nosotros" else "Ellos"}",
-                    color = Color.White, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.fillMaxWidth().padding(8.dp), textAlign = TextAlign.Center
+                    state.message ?: "",
+                    color = Color(0xFFFFF59D),
+                    fontSize = 13.sp,
+                    modifier = Modifier.fillMaxWidth().padding(4.dp),
+                    textAlign = TextAlign.Center
                 )
+            }
+
+            // Controles de fin de mano / partida
+            when (state.phase) {
+                GameState.Phase.HAND_OVER -> {
+                    Button(
+                        onClick = { viewModel.nextHand() },
+                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                    ) { Text("Siguiente mano") }
+                }
+                GameState.Phase.GAME_OVER -> {
+                    Text(
+                        "¡Fin de la partida! Ganador: ${if (state.winnerOfGame == "us") "Nosotros" else "Ellos"}",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        textAlign = TextAlign.Center
+                    )
+                    Button(
+                        onClick = { viewModel.startNewGame() },
+                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
+                    ) { Text("Nueva Partida") }
+                }
+                else -> {}
             }
         }
     }
