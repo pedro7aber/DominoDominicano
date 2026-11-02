@@ -11,6 +11,7 @@ data class GameState(
     val scores: Map<String, Int> = mapOf("us" to 0, "them" to 0),
     val handNumber: Int = 1,
     val passes: Map<PlayerId, Boolean> = emptyMap(),
+    val consecutivePasses: Int = 0,
     val lastPassPlayer: PlayerId? = null,
     val starterOfHand: PlayerId = PlayerId.SOUTH,
     val phase: Phase = Phase.DEALING,
