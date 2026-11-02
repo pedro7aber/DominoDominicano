@@ -1,6 +1,9 @@
 package com.lamesa.dominodominicano.ui.screens
 
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.*
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -10,6 +13,7 @@ import com.lamesa.dominodominicano.ui.game.GameScreen
 @Composable
 fun AppNavHost(viewModel: SettingsViewModel) {
     val navController = rememberNavController()
+    var showRules by remember { mutableStateOf(false) }
 
     NavHost(navController = navController, startDestination = "home") {
         composable("home") {
@@ -21,7 +25,7 @@ fun AppNavHost(viewModel: SettingsViewModel) {
         composable("game") {
             GameScreen(
                 onMenu = { navController.popBackStack() },
-                onRules = { }
+                onRules = { showRules = true }
             )
         }
         composable("settings") {
@@ -30,5 +34,31 @@ fun AppNavHost(viewModel: SettingsViewModel) {
                 onBack = { navController.popBackStack() }
             )
         }
+    }
+
+    if (showRules) {
+        AlertDialog(
+            onDismissRequest = { showRules = false },
+            title = { Text("Reglas Dominó Dominicano v3") },
+            text = {
+                Text(
+                    "• 4 jugadores, 2 parejas fijas.\n" +
+                    "• 28 fichas, 7 por jugador, sin pozo.\n" +
+                    "• Sentido antihorario.\n" +
+                    "• Primera mano sale el que tiene el 6-6.\n" +
+                    "• Obligatorio jugar si se tiene ficha legal.\n" +
+                    "• Dobles se colocan transversales.\n" +
+                    "• Meta configurable (100-400).\n" +
+                    "• Bonos: Capicúa, Paso Redondo, Pase de Salida, Chuchazo.\n" +
+                    "• Tranque: individual o por parejas.\n" +
+                    "• Quien llega primero a la meta gana."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showRules = false }) {
+                    Text("Entendido")
+                }
+            }
+        )
     }
 }
