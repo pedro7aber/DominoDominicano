@@ -44,7 +44,6 @@ class GameViewModel : ViewModel() {
         val legal = engine.legalMoves(s, PlayerId.SOUTH)
         if (legal.none { it.first == tile }) return
 
-        // One-tap: second tap on same tile plays it
         if (_selected.value == tile) {
             playHuman(tile)
         } else {
@@ -85,7 +84,6 @@ class GameViewModel : ViewModel() {
     }
 
     private fun applyState(newState: GameState) {
-        // Siempre actualizamos (el engine devuelve el mismo objeto solo si la jugada fue ilegal)
         _state.value = newState
         _selected.value = null
         ensureAiTurnIfNeeded()
@@ -101,7 +99,7 @@ class GameViewModel : ViewModel() {
     private fun scheduleAi() {
         aiJob?.cancel()
         aiJob = viewModelScope.launch {
-            delay(600)
+            delay(700)
             runAiLoop()
         }
     }
@@ -111,7 +109,7 @@ class GameViewModel : ViewModel() {
         var guard = 0
         while (current.phase == GameState.Phase.PLAYING &&
                !current.currentPlayer.isHuman() &&
-               guard < 12) {
+               guard < 16) {
             guard++
             val player = current.currentPlayer
             val ai = when (player) {
@@ -121,6 +119,7 @@ class GameViewModel : ViewModel() {
                 else -> return
             }
 
+            // Forzar 6-6 en apertura si lo tiene
             val move = if (current.board.isEmpty && current.handNumber == 1) {
                 val d6 = current.handOf(player).find { it.left == 6 && it.right == 6 }
                 if (d6 != null) d6 to null else ai.chooseMove(current, player)
@@ -134,6 +133,11 @@ class GameViewModel : ViewModel() {
                 engine.playTile(current, player, move.first, move.second)
             }
             _state.value = current
+
+            // Pequeña pausa visual entre jugadas de IA
+            if (current.phase == GameState.Phase.PLAYING && !current.currentPlayer.isHuman()) {
+                // el delay está en scheduleAi; aquí solo actualizamos estado
+            }
         }
     }
 }
