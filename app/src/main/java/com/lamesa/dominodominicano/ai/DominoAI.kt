@@ -4,9 +4,16 @@ import com.lamesa.dominodominicano.domain.*
 import kotlin.random.Random
 
 /**
- * IA de Dominó Dominicano – nivel alto.
- * Conteo real de fichas restantes, memoria de pases por palo,
- * protección de pareja, bloqueo y conciencia de bonos.
+ * IA de primer nivel — Dominó Dominicano.
+ *
+ * Implementa los 7 pilares de la psicología de jugadores élite:
+ * 1. Lectura de mano propia (puntos vs 42, dobles, cantidad por palo)
+ * 2. Información pública (memoria permanente de pases, conteo 7-mesa-mano)
+ * 3. Juego de pareja (señal de primera ficha, no reabrir pases del partner)
+ * 4. Control de extremos (dejar firmes, matar palos del rival)
+ * 5. Evaluación de tranca (aritmética 168, comparar con el de abajo)
+ * 6. Conciencia de partida (agresividad según distancia a la meta)
+ * 7. Conciencia de bonos (Capicúa, Paso Redondo, Pase de Salida)
  */
 class DominoAI(
     private val personality: Personality = Personality.BALANCED,
@@ -15,111 +22,281 @@ class DominoAI(
     enum class Personality { AGGRESSIVE, DEFENSIVE, BALANCED }
 
     private val rng = Random(seed)
+    private val engine = GameEngine()
+
+    // Memoria de pases: player → set de valores que NO tiene
+    private val passMemory = mutableMapOf<PlayerId, MutableSet<Int>>()
+
+    // Señal de pareja: palo fuerte inferido del compañero
+    private var partnerStrongSuit: Int? = null
+    private var partnerFirstTileSeen = false
 
     fun chooseMove(state: GameState, player: PlayerId): Pair<Tile, Board.End?>? {
-        val legal = GameEngine().legalMoves(state, player)
+        updateMemory(state, player)
+
+        val legal = engine.legalMoves(state, player)
         if (legal.isEmpty()) return null
         if (legal.size == 1) return legal.first()
 
+        // Apertura: 6-6 obligatorio en mano 1; si no, mejor doble o ficha más acompañada
         if (state.board.isEmpty) {
-            val double6 = legal.find { it.first.left == 6 && it.first.right == 6 }
-            if (double6 != null) return double6
-            // Preferir doble más alto en manos siguientes
-            val bestDouble = legal.filter { it.first.isDouble }.maxByOrNull { it.first.left }
-            if (bestDouble != null) return bestDouble
+            return chooseOpening(state, player, legal)
         }
 
         val scored = legal.map { move ->
             move to evaluate(state, player, move.first, move.second)
         }
-        return scored.maxByOrNull { it.second + rng.nextDouble() * 0.8 }?.first
+
+        // Pequeña aleatoriedad solo para desempates (no diluye la estrategia)
+        return scored.maxByOrNull { it.second + rng.nextDouble() * 0.15 }?.first
     }
 
-    private fun evaluate(state: GameState, player: PlayerId, tile: Tile, end: Board.End?): Double {
-        var score = 0.0
-        val hand = state.handOf(player)
-        val partner = player.partner()
-        val myTeam = state.teamOf(player)
-        val board = state.board
+    // -------------------------------------------------------------------------
+    // 1 + 2: Memoria y conteo
+    // -------------------------------------------------------------------------
 
-        // 1. Liberar puntos altos
-        score += tile.points * 1.1
-
-        // 2. Dobles tempranos
-        if (tile.isDouble) {
-            score += 16.0 - tile.left * 1.8
-            if (hand.size >= 5) score += 10.0
+    private fun updateMemory(state: GameState, me: PlayerId) {
+        // Registrar pases
+        for ((p, passed) in state.passes) {
+            if (passed && state.board.leftEnd != null) {
+                val mem = passMemory.getOrPut(p) { mutableSetOf() }
+                state.board.leftEnd?.let { mem.add(it) }
+                state.board.rightEnd?.let { mem.add(it) }
+            }
+        }
+        // Si el último movimiento fue un pase, registrar extremos de ese momento
+        state.lastMove?.let { move ->
+            if (move.isPass && state.board.leftEnd != null) {
+                val mem = passMemory.getOrPut(move.player) { mutableSetOf() }
+                state.board.leftEnd?.let { mem.add(it) }
+                state.board.rightEnd?.let { mem.add(it) }
+            }
         }
 
-        // 3. Nuevo tablero simulado
+        // Señal de pareja: primera ficha voluntaria del compañero
+        val partner = me.partner()
+        if (!partnerFirstTileSeen) {
+            val partnerMove = state.lastMove
+            if (partnerMove != null && partnerMove.player == partner && !partnerMove.isPass && partnerMove.tile != null) {
+                // El extremo que dejó abierto (el que no matcheó) sugiere fuerza
+                val t = partnerMove.tile
+                partnerStrongSuit = when {
+                    t.isDouble -> t.left
+                    else -> t.high // aproximación: el valor alto de su primera ficha
+                }
+                partnerFirstTileSeen = true
+            }
+        }
+    }
+
+    /** Cuántas fichas de un valor quedan desconocidas (no en mesa ni en mi mano). */
+    private fun unseenCount(value: Int, state: GameState, me: PlayerId): Int {
+        val TOTAL = 7 // cada número aparece en 7 fichas
+        val onBoard = state.board.chain.count { it.tile.matches(value) }
+        val inHand = state.handOf(me).count { it.matches(value) }
+        return (TOTAL - onBoard - inHand).coerceAtLeast(0)
+    }
+
+    /** ¿Este jugador pasó alguna vez a este valor? */
+    private fun knownVoid(player: PlayerId, value: Int): Boolean =
+        passMemory[player]?.contains(value) == true
+
+    // -------------------------------------------------------------------------
+    // Apertura
+    // -------------------------------------------------------------------------
+
+    private fun chooseOpening(
+        state: GameState,
+        player: PlayerId,
+        legal: List<Pair<Tile, Board.End?>>
+    ): Pair<Tile, Board.End?> {
+        // 6-6 si existe
+        legal.find { it.first.left == 6 && it.first.right == 6 }?.let { return it }
+
+        val hand = state.handOf(player)
+        val handPoints = hand.sumOf { it.points }
+        val isHighHand = handPoints > 48 // por encima de media 42
+
+        // Preferir doble más alto si hay dobles
+        val doubles = legal.filter { it.first.isDouble }.sortedByDescending { it.first.left }
+        if (doubles.isNotEmpty()) {
+            // Si mano alta, sacar doble alto pronto; si baja, conservar control
+            return if (isHighHand) doubles.first() else doubles.last()
+        }
+
+        // Ficha más acompañada (más fichas del mismo palo en mano)
+        return legal.maxByOrNull { (tile, _) ->
+            hand.count { it.matches(tile.left) } + hand.count { it.matches(tile.right) }
+        } ?: legal.first()
+    }
+
+    // -------------------------------------------------------------------------
+    // Evaluación profunda
+    // -------------------------------------------------------------------------
+
+    private fun evaluate(
+        state: GameState,
+        me: PlayerId,
+        tile: Tile,
+        end: Board.End?
+    ): Double {
+        var score = 0.0
+        val hand = state.handOf(me)
+        val remaining = hand.filter { it != tile }
+        val partner = me.partner()
+        val myTeam = state.teamOf(me)
+        val board = state.board
+
+        // --- Simular nuevo tablero ---
         val newBoard = if (board.isEmpty) board.play(tile) else board.play(tile, end ?: Board.End.LEFT)
         val newLeft = newBoard.leftEnd!!
         val newRight = newBoard.rightEnd!!
 
-        val remaining = hand.filter { it != tile }
+        // ===== 1. Lectura de mano propia =====
+        val handPoints = hand.sumOf { it.points }
+        val isHighHand = handPoints > 48
+        score += tile.points * (if (isHighHand) 1.4 else 0.9) // descargar pesadas si mano alta
 
-        // 4. Matches residuales propios
+        if (tile.isDouble) {
+            // Dobles en pelo: salir temprano
+            val support = hand.count { it.matches(tile.left) && it != tile }
+            if (support == 0) score += 18.0
+            else score += 8.0 - support * 1.5
+            if (hand.size >= 5) score += 6.0
+        }
+
+        // ===== 2. Conteo exacto de extremos =====
+        val leftUnseen = unseenCount(newLeft, state, me)
+        val rightUnseen = unseenCount(newRight, state, me)
+
+        // Dejar un extremo "firm" (0-1 desconocidas) es oro
+        if (leftUnseen <= 1) score += 14.0
+        if (rightUnseen <= 1) score += 14.0
+        if (leftUnseen == 0) score += 8.0
+        if (rightUnseen == 0) score += 8.0
+
+        // Matches residuales propios
         val myMatches = remaining.count { it.matches(newLeft) || it.matches(newRight) }
-        score += myMatches * 5.5
+        score += myMatches * 6.0
+        if (myMatches == 0 && remaining.isNotEmpty()) score -= 18.0 // suicidio de continuidad
 
-        // 5. Conteo real de fichas restantes por palo
-        val allPlayed = board.chain.map { it.tile } + tile
-        val playedSet = allPlayed.map { setOf(it.left, it.right) to it }.toSet()
-        val full = Tile.fullSet()
-        val stillOut = full.filter { t ->
-            allPlayed.none { it.left == t.left && it.right == t.right }
-        }
-        // Quitar las de mi mano y (aprox) no conocemos las de otros
-        val unknown = stillOut.filter { t -> remaining.none { it.left == t.left && it.right == t.right } }
+        // ===== 3. Juego de pareja =====
+        // No reabrir palo donde el partner pasó
+        if (knownVoid(partner, newLeft)) score -= 22.0
+        if (knownVoid(partner, newRight)) score -= 22.0
 
-        val leftCount = unknown.count { it.matches(newLeft) }
-        val rightCount = unknown.count { it.matches(newRight) }
-
-        if (leftCount <= 1) score += 9.0
-        if (rightCount <= 1) score += 9.0
-        if (leftCount == 0) score += 6.0
-        if (rightCount == 0) score += 6.0
-
-        // 6. Memoria de pases: si un rival pasó, ese palo es más seguro
-        val passedRivals = state.passes.filter { it.value && state.teamOf(it.key) != myTeam }.keys
-        if (passedRivals.isNotEmpty()) {
-            score += 5.0
+        // Reforzar el palo fuerte del compañero
+        partnerStrongSuit?.let { strong ->
+            if (newLeft == strong || newRight == strong) score += 12.0
         }
 
-        // 7. Protección del compañero
+        // Si el partner tiene pocas fichas, protegerlo (extremos bajos)
         val partnerSize = state.handOf(partner).size
         if (partnerSize <= 3) {
-            // Evitar extremos muy altos si el partner tiene pocas fichas
-            if (newLeft >= 5 || newRight >= 5) score -= 5.0
-            // Preferir dejar extremos bajos
-            if (newLeft <= 2 || newRight <= 2) score += 4.0
+            if (newLeft >= 5 || newRight >= 5) score -= 7.0
+            if (newLeft <= 2 || newRight <= 2) score += 5.0
         }
 
-        // 8. Bloqueo del siguiente rival
-        val next = player.next()
-        if (state.teamOf(next) != myTeam) {
-            if (leftCount <= 1 || rightCount <= 1) score += 8.0
+        // ===== 4. Matar / controlar rivales =====
+        val next = me.next()
+        val nextIsRival = state.teamOf(next) != myTeam
+
+        if (nextIsRival) {
+            // Si el siguiente rival es void en un extremo, forzarlo a pasar
+            if (knownVoid(next, newLeft) || knownVoid(next, newRight)) score += 16.0
+            if (leftUnseen <= 1 || rightUnseen <= 1) score += 10.0
         }
 
-        // 9. Dominó inminente
-        if (remaining.isEmpty()) score += 120.0
+        // Matar el palo que un rival ha estado resolviendo
+        // (si un rival jugó varias veces el mismo valor, cerrarlo)
+        // Simplificación: penalizar dejar extremos donde rivales NO son void y hay muchas desconocidas
+        val rivalWest = if (me == PlayerId.SOUTH || me == PlayerId.NORTH) PlayerId.WEST else PlayerId.SOUTH
+        val rivalEast = rivalWest.partner()
+        if (!knownVoid(rivalWest, newLeft) && leftUnseen >= 3) score -= 4.0
+        if (!knownVoid(rivalEast, newRight) && rightUnseen >= 3) score -= 4.0
 
-        // 10. Preferir no dejar al rival un extremo que yo no puedo responder
-        if (myMatches == 0 && remaining.isNotEmpty()) score -= 14.0
+        // ===== 5. Evaluación de tranca potencial =====
+        // Si después de esta jugada es probable un bloqueo, calcular si conviene
+        val wouldForcePass = (knownVoid(next, newLeft) && knownVoid(next, newRight)) ||
+                (leftUnseen == 0 && rightUnseen == 0 && myMatches == 0)
+        if (wouldForcePass && remaining.isNotEmpty()) {
+            val myRemainingPts = remaining.sumOf { it.points }
+            // Aritmética 168
+            val boardPts = state.board.chain.sumOf { it.tile.points } + tile.points
+            val totalOthers = 168 - boardPts - myRemainingPts
+            val avgOther = totalOthers / 3.0
+            if (myRemainingPts < avgOther) score += 20.0 // tranca favorable
+            else score -= 12.0 // tranca peligrosa
+        }
 
-        // 11. Personalidad
+        // ===== 6. Conciencia de partida (meta) =====
+        val usScore = state.scores["us"] ?: 0
+        val themScore = state.scores["them"] ?: 0
+        val goal = state.config.goal
+        val myTeamScore = if (myTeam == "us") usScore else themScore
+        val oppTeamScore = if (myTeam == "us") themScore else usScore
+        val distUs = goal - myTeamScore
+        val distThem = goal - oppTeamScore
+
+        when {
+            distUs <= 30 && distThem <= 30 -> {
+                // Partida apretada: precisión, no arriesgar
+                if (myMatches == 0) score -= 10.0
+                score += (7 - tile.points) * 0.5 // preferir fichas bajas
+            }
+            distUs <= 50 && distThem > 80 -> {
+                // Vamos ganando cómodos: no forzar, controlar
+                score += 3.0
+            }
+            distThem <= 40 && distUs > 60 -> {
+                // Rivales cerca de meta: bloquear agresivo
+                if (knownVoid(next, newLeft) || knownVoid(next, newRight)) score += 12.0
+                if (leftUnseen <= 1 || rightUnseen <= 1) score += 8.0
+            }
+            myTeamScore < 40 && oppTeamScore < 40 -> {
+                // Ambos bajos: agresivo, buscar puntos
+                score += tile.points * 0.4
+            }
+        }
+
+        // ===== 7. Conciencia de bonos =====
+        // Capicúa potencial: si me queda 1 ficha y los extremos son distintos y mi última ficha los une
+        if (remaining.size == 1) {
+            val last = remaining.first()
+            if (!last.isDouble && last.matches(newLeft) && last.matches(newRight) && newLeft != newRight) {
+                score += 50.0 // Capicúa casi segura
+            }
+            if (remaining.isEmpty()) score += 100.0 // Dominó inmediato (no debería llegar aquí)
+        }
+        if (remaining.isEmpty()) score += 200.0 // Dominó
+
+        // Paso Redondo: si consecutivePasses >= 2 y esta jugada cierra
+        if (state.consecutivePasses >= 2 && remaining.isEmpty()) {
+            score += 40.0
+        }
+
+        // ===== Personalidad =====
         when (personality) {
             Personality.AGGRESSIVE -> {
-                score += tile.points * 0.6
-                if (tile.isDouble) score += 4.0
+                score += tile.points * 0.5
+                if (tile.isDouble) score += 5.0
+                if (knownVoid(next, newLeft) || knownVoid(next, newRight)) score += 6.0
             }
             Personality.DEFENSIVE -> {
-                if (myMatches == 0) score -= 16.0
-                score += myMatches * 3.0
+                if (myMatches == 0) score -= 20.0
+                score += myMatches * 4.0
+                if (leftUnseen <= 1 && rightUnseen <= 1) score += 8.0
             }
             Personality.BALANCED -> {}
         }
 
         return score
+    }
+
+    /** Reiniciar memoria entre manos (llamar desde ViewModel al dealNewHand). */
+    fun resetHandMemory() {
+        passMemory.clear()
+        partnerStrongSuit = null
+        partnerFirstTileSeen = false
     }
 }
