@@ -1,0 +1,62 @@
+================================================================================
+VERIFICATION — Dominó Dominicano APK
+================================================================================
+
+Versión del APK: 1.0.0 (debug build via GitHub Actions)
+Fecha: 2026-11-03
+
+SHA256 del artifact más reciente:
+  (ver run de Actions → artifact DominoDominicano-debug)
+
+================================================================================
+RESUMEN DE LO IMPLEMENTADO
+================================================================================
+
+REGLAS v3
+- 4 jugadores, 2 parejas fijas, 28 fichas, 7 por jugador, sin pozo
+- Sentido antihorario
+- Primera mano: sale el que tiene el 6-6 (obligatorio)
+- Manos siguientes: sale el ganador de la mano anterior
+- Obligación de jugar si hay ficha legal
+- Dobles transversales
+- Meta configurable: 100/150/200/250/300/350/400
+- Conteo: todas las fichas / solo rivales
+- Bonos: Capicúa, Paso Redondo, Pase de Salida, Chuchazo (configurable)
+- Tranque: individual o por parejas
+
+IA
+- 3 oponentes con personalidades (Aggressive / Defensive / Balanced)
+- Conteo aproximado de fichas, memoria de pases, protección de pareja, bloqueo
+- Forzado del 6-6 en apertura
+
+UI / UX
+- Layout de mesa con ficha central + dos ramas (snake dominicano)
+- Resaltado de fichas legales
+- Botón PASAR solo cuando corresponde
+- Configuración de partida antes de jugar
+- Marcador, indicadores de turno y de pase
+
+ARQUITECTURA
+- Domain puro (GameEngine, Board, GameState, GameConfig, Tile)
+- ViewModel + StateFlow
+- UI Compose (GameScreen, BoardLayout, DominoTile)
+
+================================================================================
+CONFIRMACIÓN DE REGLAS
+================================================================================
+
+El motor de reglas (GameEngine) es la única fuente de verdad de legalidad.
+La UI solo dibuja y captura input.
+No se permite pasar teniendo ficha legal.
+La salida del 6-6 en la primera mano está forzada.
+
+================================================================================
+PENDIENTE / LIMITACIONES CONOCIDAS
+================================================================================
+
+- Layout de ramas aún en refinamiento geométrico (distancias y giros)
+- IA de nivel intermedio-alto, no aún “élite humana experta”
+- Sin animaciones de colocación de fichas
+- APK actual es debug (no release firmado con keystore propio)
+
+================================================================================
