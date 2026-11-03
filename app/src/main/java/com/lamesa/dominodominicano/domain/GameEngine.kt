@@ -45,6 +45,10 @@ class GameEngine(private val rng: Random = Random.Default) {
 
         val endsBefore = state.board.leftEnd to state.board.rightEnd
         val passesBefore = state.consecutivePasses
+        val passPlayersBefore = state.passHistory
+            .filter { it.handNumber == state.handNumber }
+            .map { it.player }
+            .distinct()
 
         if (state.board.isEmpty) {
             if (state.handNumber == 1 && !(tile.left == 6 && tile.right == 6)) return state
@@ -60,7 +64,7 @@ class GameEngine(private val rng: Random = Random.Default) {
                 lastPassPlayer = null,
                 message = null
             )
-            if (hand.isEmpty()) newState = finishHandByDomino(newState, player, tile, endsBefore, passesBefore)
+            if (hand.isEmpty()) newState = finishHandByDomino(newState, player, tile, endsBefore, passesBefore, passPlayersBefore)
             return newState
         }
 
@@ -83,9 +87,13 @@ class GameEngine(private val rng: Random = Random.Default) {
             message = null
         )
 
+        // Paso Redondo: los otros 3 jugadores pasaron (identidad), no solo contador
+        val others = PlayerId.entries.filter { it != player }
+        val pasoRedondo = others.all { op -> passPlayersBefore.contains(op) } || passesBefore >= 3
+
         if (hand.isEmpty()) {
-            newState = finishHandByDomino(newState, player, tile, endsBefore, passesBefore)
-        } else if (passesBefore >= 3) {
+            newState = finishHandByDomino(newState, player, tile, endsBefore, passesBefore, passPlayersBefore)
+        } else if (pasoRedondo && passesBefore >= 3) {
             val bonus = state.config.bonusValue
             val ev = GameState.BonusEvent(GameState.BonusType.PASO_REDONDO, player, bonus, state.handNumber)
             val team = newState.teamOf(player)
@@ -148,7 +156,8 @@ class GameEngine(private val rng: Random = Random.Default) {
 
     private fun finishHandByDomino(
         state: GameState, winner: PlayerId, lastTile: Tile,
-        endsBefore: Pair<Int?, Int?>, passesBefore: Int
+        endsBefore: Pair<Int?, Int?>, passesBefore: Int,
+        passPlayersBefore: List<PlayerId>
     ): GameState {
         var points = calculatePoints(state, winner)
         val bonuses = state.bonusesThisHand.toMutableList()
@@ -168,7 +177,8 @@ class GameEngine(private val rng: Random = Random.Default) {
             val ev = GameState.BonusEvent(GameState.BonusType.CHUCHAZO, winner, b, state.handNumber)
             bonuses.add(ev); allB = allB + ev; points += b; msg += " · Chuchazo +$b"
         }
-        if (passesBefore >= 3) {
+        val others = PlayerId.entries.filter { it != winner }
+        if (passesBefore >= 3 || others.all { passPlayersBefore.contains(it) }) {
             val b = state.config.bonusValue
             val ev = GameState.BonusEvent(GameState.BonusType.PASO_REDONDO, winner, b, state.handNumber)
             bonuses.add(ev); allB = allB + ev; points += b; msg += " · Paso Redondo +$b"
@@ -208,14 +218,11 @@ class GameEngine(private val rng: Random = Random.Default) {
             winnerPlayer = when {
                 state.remainingPoints(lastPasser) < state.remainingPoints(right) -> lastPasser
                 state.remainingPoints(right) < state.remainingPoints(lastPasser) -> right
-                else -> lastPasser // empate favorece al que trancó
+                else -> lastPasser
             }
             winnerTeam = state.teamOf(winnerPlayer)
-            points = if (config.countAllTiles) {
-                PlayerId.entries.sumOf { state.remainingPoints(it) }
-            } else {
-                state.remainingPoints(if (winnerPlayer == lastPasser) right else lastPasser)
-            }
+            points = if (config.countAllTiles) PlayerId.entries.sumOf { state.remainingPoints(it) }
+            else state.remainingPoints(if (winnerPlayer == lastPasser) right else lastPasser)
             msg = "¡Tranque! ${playerLabel(winnerPlayer)} (+$points)"
         } else {
             val us = state.remainingPoints(PlayerId.SOUTH) + state.remainingPoints(PlayerId.NORTH)
@@ -225,7 +232,6 @@ class GameEngine(private val rng: Random = Random.Default) {
                 them < us -> "them"
                 else -> state.teamOf(state.lastPassPlayer ?: state.starterOfHand)
             }
-            // Jugador representativo real del equipo ganador (el de menor puntos del equipo)
             winnerPlayer = if (winnerTeam == "us") {
                 if (state.remainingPoints(PlayerId.SOUTH) <= state.remainingPoints(PlayerId.NORTH))
                     PlayerId.SOUTH else PlayerId.NORTH

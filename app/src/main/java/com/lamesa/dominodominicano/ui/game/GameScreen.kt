@@ -3,9 +3,7 @@ package com.lamesa.dominodominicano.ui.game
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -68,7 +66,6 @@ fun GameScreen(
     Box(Modifier.fillMaxSize().background(bg).statusBarsPadding().navigationBarsPadding()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 4.dp)) {
 
-            // TOP BAR
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onMenu) { Text("Menú", color = Color.White, fontSize = 13.sp) }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -101,7 +98,6 @@ fun GameScreen(
 
             Spacer(Modifier.height(2.dp))
 
-            // COMPAÑERO — tamaño uniforme
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     repeat(state.handOf(PlayerId.NORTH).size.coerceAtMost(7)) {
@@ -113,7 +109,6 @@ fun GameScreen(
                 }
             }
 
-            // MESA
             Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 OpponentCol("Arriba", COLOR_WEST, state.handOf(PlayerId.WEST).size, state.passes[PlayerId.WEST] == true)
 
@@ -149,20 +144,16 @@ fun GameScreen(
                                         val borderCol = playerColor(p.playedBy)
                                         rotate(p.rotationDeg, Offset(cx + p.x, cy + p.y)) {
                                             val tl = Offset(cx + p.x - w / 2, cy + p.y - h / 2)
-                                            // sombra
                                             drawRoundRect(Color.Black.copy(0.3f), tl + Offset(1.5f, 2f), Size(w, h), CornerRadius(3f))
-                                            // cuerpo
                                             drawRoundRect(Color(0xFFF8F1E3), tl, Size(w, h), CornerRadius(3f))
-                                            // borde color jugador (doble intensidad)
                                             drawRoundRect(borderCol, tl, Size(w, h), CornerRadius(3f), style = Stroke(3f))
-                                            // línea media
                                             drawLine(Color(0xFF5D4037).copy(0.5f), tl + Offset(3f, h / 2), tl + Offset(w - 3f, h / 2), 1.2f)
-                                            drawPips(p.tile.left, tl, Size(w, h / 2))
-                                            drawPips(p.tile.right, tl + Offset(0f, h / 2), Size(w, h / 2))
+                                            // Pips orientados por matching (near = hacia conexión previa)
+                                            drawPips(p.nearValue, tl, Size(w, h / 2))
+                                            drawPips(p.farValue, tl + Offset(0f, h / 2), Size(w, h / 2))
                                         }
                                     }
                                 }
-                                // extremos
                                 Surface(
                                     Modifier.align(Alignment.TopCenter).padding(top = 4.dp),
                                     color = Color(0xFF0D3B0D), shape = RoundedCornerShape(6.dp)
@@ -185,7 +176,6 @@ fun GameScreen(
                 Text("Tú", Modifier.padding(8.dp, 2.dp), color = Color.White, fontSize = 10.sp)
             }
 
-            // MANO — tamaño uniforme
             Box(
                 Modifier.fillMaxWidth().background(Color(0xFF3E2723), RoundedCornerShape(10.dp))
                     .padding(vertical = 6.dp, horizontal = 4.dp),
@@ -198,8 +188,7 @@ fun GameScreen(
                         val dimmed = state.currentPlayer == PlayerId.SOUTH && !isLeg && legal.isNotEmpty()
                         Box(Modifier.alpha(if (dimmed) 0.35f else 1f)) {
                             DominoTileView(
-                                tile = tile,
-                                width = 40.dp, height = 72.dp,
+                                tile = tile, width = 40.dp, height = 72.dp,
                                 selected = isSel,
                                 legal = isLeg && state.currentPlayer == PlayerId.SOUTH,
                                 faceUp = true,
@@ -210,12 +199,8 @@ fun GameScreen(
                 }
             }
 
-            // ELECCIÓN DE EXTREMO (Izquierda / Derecha)
             if (pendingEnds.size >= 2 && selected != null) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
                         onClick = { viewModel.onChooseEnd(Board.End.LEFT) },
                         modifier = Modifier.weight(1f).height(44.dp),
@@ -251,31 +236,21 @@ fun GameScreen(
                 Text(it, color = Color(0xFFFFF59D), fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(2.dp), textAlign = TextAlign.Center)
             }
 
-            // FIN DE MANO: fichas restantes + puntos
             if (state.phase == GameState.Phase.HAND_OVER || state.phase == GameState.Phase.GAME_OVER) {
                 HandOverPanel(state)
                 if (state.phase == GameState.Phase.HAND_OVER) {
-                    Button(
-                        onClick = { viewModel.onNextHand() },
-                        modifier = Modifier.fillMaxWidth().padding(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-                    ) { Text("Siguiente mano") }
+                    Button(onClick = { viewModel.onNextHand() }, modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) { Text("Siguiente mano") }
                 } else {
-                    Text(
-                        "¡Partida terminada! ${if (state.winnerOfGame == "us") "Nosotros" else "Ellos"}",
+                    Text("¡Partida terminada! ${if (state.winnerOfGame == "us") "Nosotros" else "Ellos"}",
                         color = Color.White, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.fillMaxWidth().padding(8.dp), textAlign = TextAlign.Center
-                    )
-                    Button(
-                        onClick = { viewModel.startNewGame() },
-                        modifier = Modifier.fillMaxWidth().padding(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
-                    ) { Text("Nueva Partida") }
+                        modifier = Modifier.fillMaxWidth().padding(8.dp), textAlign = TextAlign.Center)
+                    Button(onClick = { viewModel.startNewGame() }, modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))) { Text("Nueva Partida") }
                 }
             }
         }
 
-        // TABLA de puntaje + bonos
         if (showTable) {
             AlertDialog(
                 onDismissRequest = { showTable = false },
@@ -296,7 +271,6 @@ fun GameScreen(
             )
         }
 
-        // PANEL de pases
         if (showPasses) {
             AlertDialog(
                 onDismissRequest = { showPasses = false },
@@ -305,10 +279,7 @@ fun GameScreen(
                     Column {
                         if (state.passHistory.isEmpty()) Text("Ningún pase aún", color = Color.Gray)
                         else state.passHistory.takeLast(20).forEach { r ->
-                            Text(
-                                "Mano ${r.handNumber}: ${playerLabel(r.player)} pasó a [${r.leftEnd}|${r.rightEnd}]",
-                                fontSize = 13.sp
-                            )
+                            Text("Mano ${r.handNumber}: ${playerLabel(r.player)} pasó a [${r.leftEnd}|${r.rightEnd}]", fontSize = 13.sp)
                         }
                     }
                 },
@@ -320,18 +291,14 @@ fun GameScreen(
 
 @Composable
 private fun HandOverPanel(state: GameState) {
-    Column(
-        Modifier.fillMaxWidth().background(Color(0xFF1A2E1A), RoundedCornerShape(8.dp)).padding(8.dp)
-    ) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFF1A2E1A), RoundedCornerShape(8.dp)).padding(8.dp)) {
         Text("Fichas restantes", color = Color(0xFFC9A227), fontWeight = FontWeight.Bold, fontSize = 13.sp)
         PlayerId.entries.forEach { p ->
             val tiles = state.handOf(p)
             if (tiles.isNotEmpty()) {
                 val pts = tiles.sumOf { it.points }
-                Text(
-                    "${playerLabel(p)}: ${tiles.joinToString(" ") { "${it.left}-${it.right}" }}  = $pts pts",
-                    color = Color.White, fontSize = 11.sp
-                )
+                Text("${playerLabel(p)}: ${tiles.joinToString(" ") { "${it.left}-${it.right}" }}  = $pts pts",
+                    color = Color.White, fontSize = 11.sp)
             }
         }
     }
