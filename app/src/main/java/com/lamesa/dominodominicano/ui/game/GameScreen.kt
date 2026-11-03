@@ -2,7 +2,9 @@ package com.lamesa.dominodominicano.ui.game
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -65,8 +67,8 @@ fun GameScreen(
                         border = androidx.compose.foundation.BorderStroke(1.dp, gold)
                     ) {
                         Text(
-                            "Mano ${state.handNumber}  ·  Nosotros ${state.scores["us"] ?: 0}  ·  Ellos ${state.scores["them"] ?: 0}",
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp),
+                            "Mano ${state.handNumber}  ·  Nos ${state.scores["us"] ?: 0}  ·  Ellos ${state.scores["them"] ?: 0}",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
                             color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium
                         )
                     }
@@ -85,7 +87,7 @@ fun GameScreen(
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     repeat(state.handOf(PlayerId.NORTH).size.coerceAtMost(7)) {
-                        DominoTileView(Tile(0,0), width = 26.dp, height = 44.dp, faceUp = false)
+                        DominoTileView(Tile(0, 0), width = 26.dp, height = 44.dp, faceUp = false)
                     }
                 }
                 Spacer(Modifier.height(2.dp))
@@ -99,16 +101,22 @@ fun GameScreen(
                 Modifier.weight(1f).fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OpponentColumn("El de arriba", Color(0xFFFFA000), state.handOf(PlayerId.WEST).size)
+                OpponentColumn(
+                    name = "Arriba",
+                    color = Color(0xFFFFA000),
+                    count = state.handOf(PlayerId.WEST).size,
+                    passed = state.passes[PlayerId.WEST] == true
+                )
 
+                // TABLERO CENTRAL
                 Box(
                     Modifier.weight(1f).fillMaxHeight().padding(horizontal = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         Modifier
-                            .fillMaxWidth(0.96f)
-                            .fillMaxHeight(0.88f)
+                            .fillMaxWidth(0.98f)
+                            .fillMaxHeight(0.90f)
                             .clip(RoundedCornerShape(10.dp))
                             .background(Brush.linearGradient(listOf(wood, woodDark, wood)))
                             .padding(8.dp)
@@ -128,14 +136,32 @@ fun GameScreen(
                                     fontSize = 13.sp
                                 )
                             } else {
-                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    state.board.chain.take(12).forEach { ot ->
-                                        DominoTileView(
-                                            ot.tile,
-                                            width = if (ot.isDouble) 32.dp else 24.dp,
-                                            height = if (ot.isDouble) 24.dp else 42.dp,
-                                            faceUp = true
-                                        )
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    // Extremos visibles
+                                    Text(
+                                        "Extremos: ${state.board.leftEnd}  ·  ${state.board.rightEnd}",
+                                        color = Color.White.copy(0.7f),
+                                        fontSize = 11.sp
+                                    )
+                                    // Cadena con scroll horizontal
+                                    Row(
+                                        modifier = Modifier
+                                            .horizontalScroll(rememberScrollState())
+                                            .padding(horizontal = 4.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        state.board.chain.forEach { ot ->
+                                            DominoTileView(
+                                                tile = ot.tile,
+                                                width = if (ot.isDouble) 36.dp else 28.dp,
+                                                height = if (ot.isDouble) 28.dp else 48.dp,
+                                                faceUp = true
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -143,7 +169,12 @@ fun GameScreen(
                     }
                 }
 
-                OpponentColumn("El de abajo", Color(0xFFE53935), state.handOf(PlayerId.EAST).size)
+                OpponentColumn(
+                    name = "Abajo",
+                    color = Color(0xFFE53935),
+                    count = state.handOf(PlayerId.EAST).size,
+                    passed = state.passes[PlayerId.EAST] == true
+                )
             }
 
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -164,7 +195,8 @@ fun GameScreen(
                     state.handOf(PlayerId.SOUTH).forEach { tile ->
                         val isSel = selected == tile
                         val isLeg = tile in legal
-                        Box(modifier = Modifier.alpha(if (state.currentPlayer == PlayerId.SOUTH && !isLeg && legal.isNotEmpty()) 0.45f else 1f)) {
+                        val dimmed = state.currentPlayer == PlayerId.SOUTH && !isLeg && legal.isNotEmpty()
+                        Box(modifier = Modifier.alpha(if (dimmed) 0.40f else 1f)) {
                             DominoTileView(
                                 tile = tile,
                                 width = 44.dp,
@@ -182,7 +214,10 @@ fun GameScreen(
             if (selected != null && state.currentPlayer == PlayerId.SOUTH && state.phase == GameState.Phase.PLAYING) {
                 Button(
                     onClick = { viewModel.onPlaySelected() },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).height(48.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 6.dp)
+                        .height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -190,11 +225,14 @@ fun GameScreen(
                 }
             }
 
-            // Botón PASAR (solo cuando no hay jugadas legales)
+            // Botón PASAR
             if (canPass) {
                 Button(
                     onClick = { viewModel.onPass() },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).height(48.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 6.dp)
+                        .height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBF360C)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -264,17 +302,26 @@ private fun LabelChip(text: String, color: Color) {
 }
 
 @Composable
-private fun OpponentColumn(name: String, color: Color, count: Int) {
+private fun OpponentColumn(name: String, color: Color, count: Int, passed: Boolean) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Surface(color = color, shape = RoundedCornerShape(6.dp)) {
-            Text(name, Modifier.padding(4.dp, 2.dp), color = if (color == Color(0xFFFFA000)) Color.Black else Color.White, fontSize = 9.sp, lineHeight = 11.sp)
+            Text(
+                name,
+                Modifier.padding(4.dp, 2.dp),
+                color = if (color == Color(0xFFFFA000)) Color.Black else Color.White,
+                fontSize = 9.sp,
+                lineHeight = 11.sp
+            )
+        }
+        if (passed) {
+            Text("PASÓ", color = Color(0xFFFF8A80), fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             repeat(count.coerceAtMost(7)) {
-                DominoTileView(Tile(0,0), width = 34.dp, height = 20.dp, faceUp = false)
+                DominoTileView(Tile(0, 0), width = 34.dp, height = 20.dp, faceUp = false)
             }
         }
     }
