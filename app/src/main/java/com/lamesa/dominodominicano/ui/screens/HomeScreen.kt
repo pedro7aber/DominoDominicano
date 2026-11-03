@@ -29,18 +29,18 @@ fun HomeScreen(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier.padding(24.dp)
         ) {
             Text("DOMINÓ", color = Color(0xFFC9A227), fontSize = 42.sp, fontWeight = FontWeight.Bold)
             Text("DOMINICANO", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Medium)
-            Text("Élite · Reglas v3 · IA de alto nivel", color = Color(0xFF81C784), fontSize = 14.sp)
+            Text("Élite · Reglas v3 · IA mejorada", color = Color(0xFF81C784), fontSize = 14.sp)
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(24.dp))
 
             Button(
                 onClick = onPlay,
-                modifier = Modifier.fillMaxWidth(0.75f).height(56.dp),
+                modifier = Modifier.fillMaxWidth(0.8f).height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -49,16 +49,16 @@ fun HomeScreen(
 
             OutlinedButton(
                 onClick = onNavigateToSettings,
-                modifier = Modifier.fillMaxWidth(0.75f),
+                modifier = Modifier.fillMaxWidth(0.8f),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
             ) {
-                Text("Ajustes")
+                Text("Ajustes de idioma")
             }
 
             Text(
-                "Meta por defecto: 200 pts · Conteo de todas las fichas",
-                color = Color.White.copy(alpha = 0.6f),
+                "Configura meta, bonos y tipo de tranque antes de cada partida",
+                color = Color.White.copy(alpha = 0.55f),
                 fontSize = 12.sp
             )
         }
