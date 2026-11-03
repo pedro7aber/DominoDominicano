@@ -33,6 +33,7 @@ class GameViewModel : ViewModel() {
     fun startNewGame(config: GameConfig = GameConfig()) {
         aiJob?.cancel()
         _selected.value = null
+        resetAllAiMemory()
         _state.value = engine.newGame(config)
         ensureAiTurnIfNeeded()
     }
@@ -68,12 +69,19 @@ class GameViewModel : ViewModel() {
         if (s.phase != GameState.Phase.HAND_OVER) return
         aiJob?.cancel()
         _selected.value = null
+        resetAllAiMemory()
         _state.value = engine.dealNewHand(s)
         ensureAiTurnIfNeeded()
     }
 
     fun legalTiles(): Set<Tile> =
         engine.legalMoves(_state.value, PlayerId.SOUTH).map { it.first }.toSet()
+
+    private fun resetAllAiMemory() {
+        aiPartner.resetHandMemory()
+        aiWest.resetHandMemory()
+        aiEast.resetHandMemory()
+    }
 
     private fun playHuman(tile: Tile) {
         val s = _state.value
@@ -99,7 +107,7 @@ class GameViewModel : ViewModel() {
     private fun scheduleAi() {
         aiJob?.cancel()
         aiJob = viewModelScope.launch {
-            delay(700)
+            delay(650)
             runAiLoop()
         }
     }
@@ -119,7 +127,6 @@ class GameViewModel : ViewModel() {
                 else -> return
             }
 
-            // Forzar 6-6 en apertura si lo tiene
             val move = if (current.board.isEmpty && current.handNumber == 1) {
                 val d6 = current.handOf(player).find { it.left == 6 && it.right == 6 }
                 if (d6 != null) d6 to null else ai.chooseMove(current, player)
@@ -133,11 +140,6 @@ class GameViewModel : ViewModel() {
                 engine.playTile(current, player, move.first, move.second)
             }
             _state.value = current
-
-            // Pequeña pausa visual entre jugadas de IA
-            if (current.phase == GameState.Phase.PLAYING && !current.currentPlayer.isHuman()) {
-                // el delay está en scheduleAi; aquí solo actualizamos estado
-            }
         }
     }
 }
