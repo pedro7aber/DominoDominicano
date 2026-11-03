@@ -198,29 +198,45 @@ class GameEngine(private val rng: Random = Random.Default) {
         val config = state.config
         val newScores = state.scores.toMutableMap()
         val points: Int
+        val winnerPlayer: PlayerId
         val winnerTeam: String
         val msg: String
+
         if (config.tranqueIndividual) {
             val lastPasser = state.lastPassPlayer ?: state.currentPlayer
             val right = lastPasser.next()
-            val winnerPlayer = when {
-                state.remainingPoints(lastPasser) <= state.remainingPoints(right) -> lastPasser
-                else -> right
+            winnerPlayer = when {
+                state.remainingPoints(lastPasser) < state.remainingPoints(right) -> lastPasser
+                state.remainingPoints(right) < state.remainingPoints(lastPasser) -> right
+                else -> lastPasser // empate favorece al que trancó
             }
             winnerTeam = state.teamOf(winnerPlayer)
-            points = if (config.countAllTiles) PlayerId.entries.sumOf { state.remainingPoints(it) }
-            else state.remainingPoints(if (winnerPlayer == lastPasser) right else lastPasser)
+            points = if (config.countAllTiles) {
+                PlayerId.entries.sumOf { state.remainingPoints(it) }
+            } else {
+                state.remainingPoints(if (winnerPlayer == lastPasser) right else lastPasser)
+            }
             msg = "¡Tranque! ${playerLabel(winnerPlayer)} (+$points)"
         } else {
             val us = state.remainingPoints(PlayerId.SOUTH) + state.remainingPoints(PlayerId.NORTH)
             val them = state.remainingPoints(PlayerId.WEST) + state.remainingPoints(PlayerId.EAST)
             winnerTeam = when {
-                us <= them -> "us"
-                else -> "them"
+                us < them -> "us"
+                them < us -> "them"
+                else -> state.teamOf(state.lastPassPlayer ?: state.starterOfHand)
+            }
+            // Jugador representativo real del equipo ganador (el de menor puntos del equipo)
+            winnerPlayer = if (winnerTeam == "us") {
+                if (state.remainingPoints(PlayerId.SOUTH) <= state.remainingPoints(PlayerId.NORTH))
+                    PlayerId.SOUTH else PlayerId.NORTH
+            } else {
+                if (state.remainingPoints(PlayerId.WEST) <= state.remainingPoints(PlayerId.EAST))
+                    PlayerId.WEST else PlayerId.EAST
             }
             points = if (config.countAllTiles) us + them else if (winnerTeam == "us") them else us
             msg = "¡Tranque parejas! $winnerTeam (+$points)"
         }
+
         newScores[winnerTeam] = (newScores[winnerTeam] ?: 0) + points
         val gw = when {
             (newScores["us"] ?: 0) >= config.goal -> "us"
@@ -230,7 +246,7 @@ class GameEngine(private val rng: Random = Random.Default) {
         return state.copy(
             scores = newScores,
             phase = if (gw != null) GameState.Phase.GAME_OVER else GameState.Phase.HAND_OVER,
-            winnerOfHand = if (winnerTeam == "us") PlayerId.SOUTH else PlayerId.WEST,
+            winnerOfHand = winnerPlayer,
             winnerOfGame = gw,
             message = msg
         )
