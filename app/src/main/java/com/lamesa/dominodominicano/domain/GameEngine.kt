@@ -44,7 +44,6 @@ class GameEngine(private val rng: Random = Random.Default) {
         if (!hand.contains(tile)) return state
 
         val endsBefore = state.board.leftEnd to state.board.rightEnd
-        val passesBefore = state.consecutivePasses
         val passPlayersBefore = state.passHistory
             .filter { it.handNumber == state.handNumber }
             .map { it.player }
@@ -64,7 +63,7 @@ class GameEngine(private val rng: Random = Random.Default) {
                 lastPassPlayer = null,
                 message = null
             )
-            if (hand.isEmpty()) newState = finishHandByDomino(newState, player, tile, endsBefore, passesBefore, passPlayersBefore)
+            if (hand.isEmpty()) newState = finishHandByDomino(newState, player, tile, endsBefore, passPlayersBefore)
             return newState
         }
 
@@ -87,13 +86,13 @@ class GameEngine(private val rng: Random = Random.Default) {
             message = null
         )
 
-        // Paso Redondo: los otros 3 jugadores pasaron (identidad), no solo contador
+        // J10: Paso Redondo SOLO por identidad de los otros 3 (sin atajo de contador)
         val others = PlayerId.entries.filter { it != player }
-        val pasoRedondo = others.all { op -> passPlayersBefore.contains(op) } || passesBefore >= 3
+        val threeOthersPassed = others.all { op -> passPlayersBefore.contains(op) }
 
         if (hand.isEmpty()) {
-            newState = finishHandByDomino(newState, player, tile, endsBefore, passesBefore, passPlayersBefore)
-        } else if (pasoRedondo && passesBefore >= 3) {
+            newState = finishHandByDomino(newState, player, tile, endsBefore, passPlayersBefore)
+        } else if (threeOthersPassed) {
             val bonus = state.config.bonusValue
             val ev = GameState.BonusEvent(GameState.BonusType.PASO_REDONDO, player, bonus, state.handNumber)
             val team = newState.teamOf(player)
@@ -156,7 +155,7 @@ class GameEngine(private val rng: Random = Random.Default) {
 
     private fun finishHandByDomino(
         state: GameState, winner: PlayerId, lastTile: Tile,
-        endsBefore: Pair<Int?, Int?>, passesBefore: Int,
+        endsBefore: Pair<Int?, Int?>,
         passPlayersBefore: List<PlayerId>
     ): GameState {
         var points = calculatePoints(state, winner)
@@ -177,8 +176,9 @@ class GameEngine(private val rng: Random = Random.Default) {
             val ev = GameState.BonusEvent(GameState.BonusType.CHUCHAZO, winner, b, state.handNumber)
             bonuses.add(ev); allB = allB + ev; points += b; msg += " · Chuchazo +$b"
         }
+        // J10 identidad pura
         val others = PlayerId.entries.filter { it != winner }
-        if (passesBefore >= 3 || others.all { passPlayersBefore.contains(it) }) {
+        if (others.all { passPlayersBefore.contains(it) }) {
             val b = state.config.bonusValue
             val ev = GameState.BonusEvent(GameState.BonusType.PASO_REDONDO, winner, b, state.handNumber)
             bonuses.add(ev); allB = allB + ev; points += b; msg += " · Paso Redondo +$b"

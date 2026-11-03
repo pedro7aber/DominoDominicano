@@ -6,12 +6,8 @@ import com.lamesa.dominodominicano.domain.Tile
 import kotlin.math.abs
 
 /**
- * Layout dominicano completo y estable:
- * - Salida anclada en (0,0)
- * - Posiciones fijas relativas al starter (no recentrar)
- * - Rama izquierda (LEFT arm) = Norte → este → sur (giros a 2 fichas horizontales)
- * - Rama derecha (RIGHT arm) = Sur → oeste → norte
- * - Matching leftIsLeft; dobles transversales; tamaño uniforme; sin solapes
+ * Layout estable por CONTEO de fichas (no solo margen de pantalla).
+ * Starter (0,0). Rama N/S con giro1 por conteo+borde, giro2 tras 2 horizontales + marginX.
  */
 object BoardLayout {
 
@@ -19,6 +15,8 @@ object BoardLayout {
     const val TILE_H = 64f
     const val GAP = 2f
     private const val SECOND_TURN_AFTER = 2
+    /** Mínimo de fichas en dirección inicial antes de permitir primer giro por borde. */
+    private const val MIN_BEFORE_FIRST_TURN = 2
 
     data class PlacedTile(
         val tile: Tile,
@@ -28,7 +26,6 @@ object BoardLayout {
         val rotationDeg: Float,
         val playedBy: PlayerId?,
         val leftIsLeft: Boolean,
-        /** Valor dibujado en la mitad "hacia el centro/prev" y "hacia fuera". */
         val nearValue: Int,
         val farValue: Int
     )
@@ -41,44 +38,34 @@ object BoardLayout {
         val si = board.starterIndex.coerceIn(0, chain.lastIndex)
         val result = mutableListOf<PlacedTile>()
 
-        // --- Starter en (0,0) ---
         val st = chain[si]
         result.add(place(st, 0f, 0f, if (st.isDouble) 90f else 0f))
 
+        // Ratios fijos → mismo camino para el mismo índice de ficha (L2 estable)
         val marginX = tableWidth * 0.40f
         val marginY = tableHeight * 0.36f
         val stepLong = TILE_H + GAP
         val stepShort = TILE_W + GAP
 
-        // Brazo izquierdo = índices si-1, si-2, ... (hacia leftEnd) = rama Norte
         placeArm(
             tiles = (si - 1 downTo 0).map { chain[it] },
-            startX = 0f, startY = 0f,
-            initial = Dir.N,
-            isNorth = true,
+            initial = Dir.N, isNorth = true,
             marginX = marginX, marginY = marginY,
             stepLong = stepLong, stepShort = stepShort,
             into = result
         )
-
-        // Brazo derecho = índices si+1 ... = rama Sur
         placeArm(
             tiles = ((si + 1) until chain.size).map { chain[it] },
-            startX = 0f, startY = 0f,
-            initial = Dir.S,
-            isNorth = false,
+            initial = Dir.S, isNorth = false,
             marginX = marginX, marginY = marginY,
             stepLong = stepLong, stepShort = stepShort,
             into = result
         )
-
         return result
     }
 
     private fun placeArm(
         tiles: List<Board.OrientedTile>,
-        startX: Float,
-        startY: Float,
         initial: Dir,
         isNorth: Boolean,
         marginX: Float,
@@ -88,10 +75,11 @@ object BoardLayout {
         into: MutableList<PlacedTile>
     ) {
         var dir = initial
-        var cx = startX
-        var cy = startY
+        var cx = 0f
+        var cy = 0f
         var turns = 0
         var sinceTurn = 0
+        var tilesInArm = 0
 
         for (ot in tiles) {
             val step = if (ot.isDouble) stepShort else stepLong
@@ -101,6 +89,8 @@ object BoardLayout {
                 Dir.E -> cx += step
                 Dir.W -> cx -= step
             }
+            tilesInArm++
+            sinceTurn++
 
             val rot = when {
                 ot.isDouble -> when (dir) {
@@ -112,37 +102,41 @@ object BoardLayout {
                     Dir.E, Dir.W -> 90f
                 }
             }
-
             into.add(place(ot, cx, cy, rot))
-            sinceTurn++
 
-            if (turns == 0) {
+            // Giro 1: tras MIN fichas Y (borde Y o conteo alto)
+            if (turns == 0 && tilesInArm >= MIN_BEFORE_FIRST_TURN) {
                 val nearEdge = when (dir) {
                     Dir.N -> cy <= -marginY
                     Dir.S -> cy >= marginY
                     else -> false
                 }
-                if (nearEdge) {
+                // También girar tras 4 fichas en línea para estabilidad independiente de resolución
+                if (nearEdge || tilesInArm >= 4) {
                     dir = if (isNorth) Dir.E else Dir.W
                     turns = 1
                     sinceTurn = 0
                 }
             } else if (turns == 1 && sinceTurn >= SECOND_TURN_AFTER) {
-                dir = if (isNorth) Dir.S else Dir.N
-                turns = 2
-                sinceTurn = 0
+                // Giro 2: tras 2 horizontales Y (opcional) no pasar marginX en exceso
+                val pastSide = abs(cx) >= marginX * 0.85f
+                if (sinceTurn >= SECOND_TURN_AFTER || pastSide) {
+                    dir = if (isNorth) Dir.S else Dir.N
+                    turns = 2
+                    sinceTurn = 0
+                }
             }
         }
     }
 
     private fun place(ot: Board.OrientedTile, x: Float, y: Float, rot: Float): PlacedTile {
+        // near = hacia el starter (conexión); far = extremo libre de esa ficha en el brazo
         val near = if (ot.leftIsLeft) ot.tile.left else ot.tile.right
         val far = if (ot.leftIsLeft) ot.tile.right else ot.tile.left
         return PlacedTile(
             tile = ot.tile,
             isDouble = ot.isDouble,
-            x = x,
-            y = y,
+            x = x, y = y,
             rotationDeg = rot,
             playedBy = ot.playedBy,
             leftIsLeft = ot.leftIsLeft,
