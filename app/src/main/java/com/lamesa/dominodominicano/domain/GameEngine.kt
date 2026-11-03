@@ -3,9 +3,11 @@ package com.lamesa.dominodominicano.domain
 import kotlin.random.Random
 
 /**
- * Motor de reglas estricto de Dominó Dominicano v3.
- * Implementa: salida 6-6, obligación de jugar, Capicúa, Pase de Salida,
- * Paso Redondo, Chuchazo, Tranque individual/por parejas, conteo configurable.
+ * Motor de reglas estricto Dominó Dominicano v3.
+ * Fixes críticos:
+ * - Capicúa = extremos DISTINTOS + ficha que cierra ambos (ej. 3-5 en puntas 3 y 5)
+ * - Tranque solo tras 4 pases consecutivos (nadie pudo jugar)
+ * - Paso Redondo cuando juegas tras 3 pases de los demás
  */
 class GameEngine(private val rng: Random = Random.Default) {
 
@@ -51,7 +53,10 @@ class GameEngine(private val rng: Random = Random.Default) {
         val hand = state.handOf(player).toMutableList()
         if (!hand.contains(tile)) return state
 
-        // --- Apertura ---
+        // Guardar extremos ANTES de jugar (para Capicúa)
+        val endsBefore = state.board.leftEnd to state.board.rightEnd
+        val passesBefore = state.consecutivePasses
+
         if (state.board.isEmpty) {
             if (state.handNumber == 1 && !(tile.left == 6 && tile.right == 6)) return state
             val newBoard = state.board.play(tile)
@@ -67,7 +72,9 @@ class GameEngine(private val rng: Random = Random.Default) {
                 lastPassPlayer = null,
                 message = null
             )
-            if (hand.isEmpty()) newState = finishHandByDomino(newState, player, tile)
+            if (hand.isEmpty()) {
+                newState = finishHandByDomino(newState, player, tile, endsBefore, passesBefore)
+            }
             return newState
         }
 
@@ -80,22 +87,6 @@ class GameEngine(private val rng: Random = Random.Default) {
         hand.remove(tile)
         val newHands = state.hands.toMutableMap().apply { put(player, hand) }
 
-        // --- Evaluación de bonos inmediatos ---
-        val bonuses = state.bonusesThisHand.toMutableList()
-        var bonusMsg: String? = null
-
-        // Capicúa: la ficha cierra ambos extremos (leftEnd == rightEnd después de jugar y la ficha coincide con ambos)
-        val isCapicua = !tile.isDouble &&
-                state.board.leftEnd != null &&
-                state.board.rightEnd != null &&
-                state.board.leftEnd == state.board.rightEnd &&
-                tile.matches(state.board.leftEnd!!) &&
-                hand.isEmpty().not().let { true } // se evalúa al final si es la última
-
-        // Pase de Salida: si el jugador anterior fue el salidor de la mano y el actual (siguiente) acaba de jugar
-        // (el bono se otorga cuando el rival de la derecha del salidor PASA, no cuando juega).
-        // Se maneja en pass().
-
         var newState = state.copy(
             hands = newHands,
             board = newBoard,
@@ -104,12 +95,25 @@ class GameEngine(private val rng: Random = Random.Default) {
             passes = state.passes.toMutableMap().apply { remove(player) },
             consecutivePasses = 0,
             lastPassPlayer = null,
-            bonusesThisHand = bonuses,
-            message = bonusMsg
+            message = null
         )
 
         if (hand.isEmpty()) {
-            newState = finishHandByDomino(newState, player, tile)
+            newState = finishHandByDomino(newState, player, tile, endsBefore, passesBefore)
+        } else if (passesBefore >= 3) {
+            // Paso Redondo: jugó tras 3 pases de los demás
+            val bonus = state.config.bonusValue
+            val bonuses = newState.bonusesThisHand + GameState.BonusEvent(
+                GameState.BonusType.PASO_REDONDO, player, bonus
+            )
+            val team = newState.teamOf(player)
+            val newScores = newState.scores.toMutableMap()
+            newScores[team] = (newScores[team] ?: 0) + bonus
+            newState = newState.copy(
+                bonusesThisHand = bonuses,
+                scores = newScores,
+                message = "¡Paso Redondo! +$bonus"
+            )
         }
         return newState
     }
@@ -117,16 +121,14 @@ class GameEngine(private val rng: Random = Random.Default) {
     fun pass(state: GameState, player: PlayerId): GameState {
         if (state.phase != GameState.Phase.PLAYING || state.currentPlayer != player) return state
         val hand = state.handOf(player)
-        if (hand.any { state.board.canPlay(it) }) return state // obligatorio jugar
+        if (hand.any { state.board.canPlay(it) }) return state
 
         val newPasses = state.passes.toMutableMap().apply { put(player, true) }
         val consecutive = state.consecutivePasses + 1
         val bonuses = state.bonusesThisHand.toMutableList()
         var msg = "${playerLabel(player)} pasó"
 
-        // --- Pase de Salida ---
-        // Si el jugador que pasa es el siguiente al salidor de la mano (rival de la derecha del salidor)
-        // y es el primer pase después de la salida, se otorga el bono al salidor.
+        // Pase de Salida
         val starter = state.starterOfHand
         val rightOfStarter = starter.next()
         if (player == rightOfStarter && state.lastMove?.player == starter && state.consecutivePasses == 0) {
@@ -135,16 +137,12 @@ class GameEngine(private val rng: Random = Random.Default) {
             msg += " · ¡Pase de Salida! +$bonusPoints para ${playerLabel(starter)}"
         }
 
-        // Si después del Pase de Salida el compañero del salidor también pasa, se elimina el bono.
+        // Anulación si el compañero del salidor también pasa
         val partnerOfStarter = starter.partner()
         if (player == partnerOfStarter && bonuses.any { it.type == GameState.BonusType.PASE_DE_SALIDA }) {
             bonuses.removeAll { it.type == GameState.BonusType.PASE_DE_SALIDA }
             msg += " · Bono de Pase de Salida anulado"
         }
-
-        // --- Paso Redondo ---
-        // Los otros tres pasan y el jugador actual aún puede jugar → se evalúa cuando alguien juega después de 3 pases.
-        // Se detecta en el siguiente playTile si consecutivePasses == 3.
 
         var newState = state.copy(
             currentPlayer = player.next(),
@@ -156,29 +154,38 @@ class GameEngine(private val rng: Random = Random.Default) {
             message = msg
         )
 
-        // Tranque: 3 pases consecutivos (los 3 jugadores restantes no pueden jugar)
-        if (consecutive >= 3) {
+        // Tranque solo tras 4 pases consecutivos (nadie en la mesa pudo jugar)
+        if (consecutive >= 4) {
             newState = finishHandByTranque(newState)
         }
         return newState
     }
 
-    private fun finishHandByDomino(state: GameState, winner: PlayerId, lastTile: Tile): GameState {
+    private fun finishHandByDomino(
+        state: GameState,
+        winner: PlayerId,
+        lastTile: Tile,
+        endsBefore: Pair<Int?, Int?>,
+        passesBefore: Int
+    ): GameState {
         var points = calculatePoints(state, winner)
         val bonuses = state.bonusesThisHand.toMutableList()
         var msg = "¡Dominó! ${playerLabel(winner)} gana la mano"
 
-        // Capicúa: última ficha cierra ambos extremos (leftEnd == rightEnd antes de jugar y la ficha coincide)
-        val board = state.board
-        if (!lastTile.isDouble && board.leftEnd != null && board.rightEnd != null &&
-            board.leftEnd == board.rightEnd && lastTile.matches(board.leftEnd!!)) {
+        // Capicúa: extremos ANTES eran DISTINTOS y la ficha cierra ambos
+        val (leftBefore, rightBefore) = endsBefore
+        if (!lastTile.isDouble &&
+            leftBefore != null && rightBefore != null &&
+            leftBefore != rightBefore &&
+            lastTile.matches(leftBefore) && lastTile.matches(rightBefore)
+        ) {
             val bonus = state.config.bonusValue
             bonuses.add(GameState.BonusEvent(GameState.BonusType.CAPICUA, winner, bonus))
             points += bonus
             msg += " · ¡Capicúa! +$bonus"
         }
 
-        // Chuchazo: última ficha es 0-0 y la opción está activada
+        // Chuchazo
         if (state.config.chuchazoEnabled && lastTile.left == 0 && lastTile.right == 0) {
             val bonus = state.config.bonusValue
             bonuses.add(GameState.BonusEvent(GameState.BonusType.CHUCHAZO, winner, bonus))
@@ -186,15 +193,15 @@ class GameEngine(private val rng: Random = Random.Default) {
             msg += " · ¡Chuchazo! +$bonus"
         }
 
-        // Paso Redondo: si había 3 pases consecutivos antes de esta jugada (el jugador pudo jugar cuando los otros 3 no)
-        if (state.consecutivePasses >= 3) {
+        // Paso Redondo al dominar tras 3 pases
+        if (passesBefore >= 3) {
             val bonus = state.config.bonusValue
             bonuses.add(GameState.BonusEvent(GameState.BonusType.PASO_REDONDO, winner, bonus))
             points += bonus
             msg += " · ¡Paso Redondo! +$bonus"
         }
 
-        // Sumar bonos de Pase de Salida ya registrados
+        // Pase de Salida ya registrado
         val paseSalidaBonus = bonuses.filter { it.type == GameState.BonusType.PASE_DE_SALIDA }.sumOf { it.points }
         points += paseSalidaBonus
 
@@ -221,12 +228,11 @@ class GameEngine(private val rng: Random = Random.Default) {
     private fun finishHandByTranque(state: GameState): GameState {
         val config = state.config
         val newScores = state.scores.toMutableMap()
-        var points: Int
-        var winnerTeam: String
-        var msg: String
+        val points: Int
+        val winnerTeam: String
+        val msg: String
 
         if (config.tranqueIndividual) {
-            // Tranque individual: quien hizo el último pase (el que cerró el tranque) vs el de su derecha
             val lastPasser = state.lastPassPlayer ?: state.currentPlayer
             val rightOfPasser = lastPasser.next()
             val ptsPasser = state.remainingPoints(lastPasser)
@@ -234,7 +240,7 @@ class GameEngine(private val rng: Random = Random.Default) {
             val winnerPlayer = when {
                 ptsPasser < ptsRight -> lastPasser
                 ptsRight < ptsPasser -> rightOfPasser
-                else -> lastPasser // empate → gana quien hizo el tranque
+                else -> lastPasser
             }
             winnerTeam = state.teamOf(winnerPlayer)
             points = if (config.countAllTiles) {
@@ -244,7 +250,6 @@ class GameEngine(private val rng: Random = Random.Default) {
             }
             msg = "¡Tranque individual! ${playerLabel(winnerPlayer)} gana (+$points)"
         } else {
-            // Tranque por parejas
             val usPts = state.remainingPoints(PlayerId.SOUTH) + state.remainingPoints(PlayerId.NORTH)
             val themPts = state.remainingPoints(PlayerId.WEST) + state.remainingPoints(PlayerId.EAST)
             winnerTeam = when {

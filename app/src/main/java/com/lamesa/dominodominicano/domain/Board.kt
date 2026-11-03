@@ -1,8 +1,8 @@
 package com.lamesa.dominodominicano.domain
 
 /**
- * Representa la cadena de fichas en la mesa.
- * Guarda la secuencia y los extremos abiertos.
+ * Cadena de fichas en la mesa.
+ * leftEnd / rightEnd = extremos abiertos.
  */
 data class Board(
     val chain: List<OrientedTile> = emptyList(),
@@ -14,7 +14,6 @@ data class Board(
     data class OrientedTile(
         val tile: Tile,
         val isDouble: Boolean,
-        /** true si el left de la ficha está hacia el extremo izquierdo de la cadena */
         val leftIsLeft: Boolean = true
     )
 
@@ -24,21 +23,21 @@ data class Board(
     }
 
     fun legalEnds(tile: Tile): List<End> {
-        if (isEmpty) return listOf(End.LEFT) // se coloca en el centro
+        if (isEmpty) return listOf(End.LEFT)
         val ends = mutableListOf<End>()
         if (tile.matches(leftEnd!!)) ends.add(End.LEFT)
-        if (tile.matches(rightEnd!!) && (leftEnd != rightEnd || !tile.isDouble)) {
-            if (leftEnd != rightEnd || ends.isEmpty()) ends.add(End.RIGHT)
+        if (tile.matches(rightEnd!!)) {
+            // Si ambos extremos son el mismo número, jugar en LEFT o RIGHT es equivalente;
+            // solo añadimos RIGHT si es distinto o si aún no está LEFT.
+            if (leftEnd != rightEnd || End.LEFT !in ends) {
+                ends.add(End.RIGHT)
+            }
         }
         return ends
     }
 
     enum class End { LEFT, RIGHT }
 
-    /**
-     * Coloca una ficha. Devuelve el nuevo Board.
-     * Para la salida (board vacío), se asume que se coloca horizontal.
-     */
     fun play(tile: Tile, end: End = End.LEFT): Board {
         if (isEmpty) {
             return Board(
@@ -71,6 +70,4 @@ data class Board(
             }
         }
     }
-
-    fun openEnds(): Pair<Int?, Int?> = leftEnd to rightEnd
 }
