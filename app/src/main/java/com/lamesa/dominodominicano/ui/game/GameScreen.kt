@@ -108,7 +108,6 @@ fun GameScreen(
                     passed = state.passes[PlayerId.WEST] == true
                 )
 
-                // TABLERO CENTRAL
                 Box(
                     Modifier.weight(1f).fillMaxHeight().padding(horizontal = 4.dp),
                     contentAlignment = Alignment.Center
@@ -138,28 +137,35 @@ fun GameScreen(
                             } else {
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    // Extremos visibles
-                                    Text(
-                                        "Extremos: ${state.board.leftEnd}  ·  ${state.board.rightEnd}",
-                                        color = Color.White.copy(0.7f),
-                                        fontSize = 11.sp
-                                    )
-                                    // Cadena con scroll horizontal
+                                    // Extremos destacados
+                                    Surface(
+                                        color = Color(0xFF0D3B0D),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            "  ${state.board.leftEnd}   ← extremos →   ${state.board.rightEnd}  ",
+                                            color = gold,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
                                     Row(
                                         modifier = Modifier
                                             .horizontalScroll(rememberScrollState())
                                             .padding(horizontal = 4.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         state.board.chain.forEach { ot ->
                                             DominoTileView(
                                                 tile = ot.tile,
-                                                width = if (ot.isDouble) 36.dp else 28.dp,
-                                                height = if (ot.isDouble) 28.dp else 48.dp,
-                                                faceUp = true
+                                                width = if (ot.isDouble) 40.dp else 30.dp,
+                                                height = if (ot.isDouble) 30.dp else 52.dp,
+                                                faceUp = true,
+                                                horizontalDouble = ot.isDouble
                                             )
                                         }
                                     }
@@ -196,12 +202,13 @@ fun GameScreen(
                         val isSel = selected == tile
                         val isLeg = tile in legal
                         val dimmed = state.currentPlayer == PlayerId.SOUTH && !isLeg && legal.isNotEmpty()
-                        Box(modifier = Modifier.alpha(if (dimmed) 0.40f else 1f)) {
+                        Box(modifier = Modifier.alpha(if (dimmed) 0.38f else 1f)) {
                             DominoTileView(
                                 tile = tile,
-                                width = 44.dp,
-                                height = 80.dp,
+                                width = 46.dp,
+                                height = 84.dp,
                                 selected = isSel,
+                                legal = isLeg && state.currentPlayer == PlayerId.SOUTH,
                                 faceUp = true,
                                 onClick = { viewModel.onTileTapped(tile) }
                             )
@@ -240,7 +247,6 @@ fun GameScreen(
                 }
             }
 
-            // Mensaje
             state.message?.let { msg ->
                 Text(
                     msg,
