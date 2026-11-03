@@ -5,16 +5,17 @@ import com.lamesa.dominodominicano.domain.PlayerId
 import com.lamesa.dominodominicano.domain.Tile
 
 /**
- * Layout ESTABLE: cada ficha tiene posición fija según su índice en la cadena.
- * No se recalculan ni mueven las fichas ya colocadas.
- * Tamaño UNIFORME para todas las fichas.
- * Conexión correcta: se tocan solo por el extremo que matchea.
+ * Layout ESTABLE e impoluto:
+ * - Ficha de salida anclada en (0,0)
+ * - Al añadir fichas, las ya colocadas NO se mueven
+ * - Matching: leftIsLeft orienta el número correcto hacia el vecino
+ * - Tamaño uniforme
+ * - Dobles transversales
  */
 object BoardLayout {
 
-    // Tamaño uniforme de ficha (px lógicos)
-    const val TILE_W = 36f   // ancho (lado corto cuando vertical)
-    const val TILE_H = 64f   // alto (lado largo cuando vertical)
+    const val TILE_W = 36f
+    const val TILE_H = 64f
     const val GAP = 1.5f
 
     data class PlacedTile(
@@ -22,27 +23,24 @@ object BoardLayout {
         val isDouble: Boolean,
         val x: Float,
         val y: Float,
-        val rotationDeg: Float, // 0 = vertical, 90 = horizontal (doble transversal)
-        val playedBy: PlayerId?
+        val rotationDeg: Float,
+        val playedBy: PlayerId?,
+        /** Si true, la mitad "left" del dibujo está hacia -X (izquierda de la cadena). */
+        val leftIsLeft: Boolean
     )
 
-    /**
-     * Layout lineal estable centrado.
-     * Cadena de izquierda a derecha. Dobles transversales.
-     * Las posiciones dependen solo del índice → no se mueven al añadir fichas.
-     */
     fun layout(board: Board, tableWidth: Float, tableHeight: Float): List<PlacedTile> {
         if (board.isEmpty) return emptyList()
         val chain = board.chain
-        val n = chain.size
+        val starterIdx = board.starterIndex.coerceIn(0, chain.lastIndex)
 
-        // Espacio por ficha (uniforme)
+        // Paso uniforme: cada ficha ocupa el mismo espacio horizontal
         val step = TILE_W + GAP
-        val totalWidth = n * step
-        val startX = -totalWidth / 2f + step / 2f
 
         return chain.mapIndexed { i, ot ->
-            val x = startX + i * step
+            // Offset relativo al starter: negativo a la izquierda, positivo a la derecha
+            val offset = (i - starterIdx).toFloat()
+            val x = offset * step
             val y = 0f
             val rot = if (ot.isDouble) 90f else 0f
             PlacedTile(
@@ -51,7 +49,8 @@ object BoardLayout {
                 x = x,
                 y = y,
                 rotationDeg = rot,
-                playedBy = ot.playedBy
+                playedBy = ot.playedBy,
+                leftIsLeft = ot.leftIsLeft
             )
         }
     }
