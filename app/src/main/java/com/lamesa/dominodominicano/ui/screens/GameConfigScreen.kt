@@ -3,7 +3,6 @@ package com.lamesa.dominodominicano.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -11,22 +10,29 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lamesa.dominodominicano.data.SettingsRepository
 import com.lamesa.dominodominicano.domain.GameConfig
+import kotlinx.coroutines.launch
 
 @Composable
 fun GameConfigScreen(
     onStart: (GameConfig) -> Unit,
     onBack: () -> Unit
 ) {
-    var goal by remember { mutableIntStateOf(200) }
-    var countAll by remember { mutableStateOf(true) }
-    var bonusValue by remember { mutableIntStateOf(25) }
-    var chuchazo by remember { mutableStateOf(false) }
-    var tranqueIndividual by remember { mutableStateOf(true) }
+    val context = LocalContext.current
+    val repo = remember { SettingsRepository(context) }
+    val scope = rememberCoroutineScope()
+    val savedConfig by repo.gameConfig.collectAsState(initial = GameConfig())
+
+    var goal by remember(savedConfig) { mutableIntStateOf(savedConfig.goal) }
+    var countAll by remember(savedConfig) { mutableStateOf(savedConfig.countAllTiles) }
+    var bonusValue by remember(savedConfig) { mutableIntStateOf(savedConfig.bonusValue) }
+    var chuchazo by remember(savedConfig) { mutableStateOf(savedConfig.chuchazoEnabled) }
+    var tranqueIndividual by remember(savedConfig) { mutableStateOf(savedConfig.tranqueIndividual) }
 
     val bg = Color(0xFF0D1F0D)
 
@@ -40,9 +46,10 @@ fun GameConfigScreen(
             .padding(20.dp)
     ) {
         Text("Configurar Partida", color = Color(0xFFC9A227), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Text("Se guarda para la próxima vez", color = Color.White.copy(0.5f), fontSize = 12.sp)
         Spacer(Modifier.height(20.dp))
 
-        // Meta
         Text("Meta de puntos", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -57,7 +64,6 @@ fun GameConfigScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // Conteo
         Text("Conteo de puntos", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(8.dp))
         Row {
@@ -68,7 +74,6 @@ fun GameConfigScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // Valor de bonos
         Text("Valor de bonos (Capicúa, Pase, etc.)", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(8.dp))
         Row {
@@ -79,7 +84,6 @@ fun GameConfigScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // Tranque
         Text("Tipo de Tranque", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(8.dp))
         Row {
@@ -90,7 +94,6 @@ fun GameConfigScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // Chuchazo
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = chuchazo, onCheckedChange = { chuchazo = it })
             Text("Activar Chuchazo (0-0 como última ficha)", color = Color.White, fontSize = 14.sp)
@@ -100,15 +103,15 @@ fun GameConfigScreen(
 
         Button(
             onClick = {
-                onStart(
-                    GameConfig(
-                        goal = goal,
-                        countAllTiles = countAll,
-                        bonusValue = bonusValue,
-                        chuchazoEnabled = chuchazo,
-                        tranqueIndividual = tranqueIndividual
-                    )
+                val config = GameConfig(
+                    goal = goal,
+                    countAllTiles = countAll,
+                    bonusValue = bonusValue,
+                    chuchazoEnabled = chuchazo,
+                    tranqueIndividual = tranqueIndividual
                 )
+                scope.launch { repo.saveGameConfig(config) }
+                onStart(config)
             },
             modifier = Modifier.fillMaxWidth().height(52.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
