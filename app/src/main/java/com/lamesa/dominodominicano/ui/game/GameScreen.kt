@@ -1,10 +1,9 @@
 package com.lamesa.dominodominicano.ui.game
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,10 +11,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -108,10 +115,12 @@ fun GameScreen(
                     passed = state.passes[PlayerId.WEST] == true
                 )
 
+                // TABLERO CON LAYOUT REALISTA
                 Box(
                     Modifier.weight(1f).fillMaxHeight().padding(horizontal = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
+                    var tableSize by remember { mutableStateOf(IntSize.Zero) }
                     Box(
                         Modifier
                             .fillMaxWidth(0.98f)
@@ -119,55 +128,69 @@ fun GameScreen(
                             .clip(RoundedCornerShape(10.dp))
                             .background(Brush.linearGradient(listOf(wood, woodDark, wood)))
                             .padding(8.dp)
+                            .onSizeChanged { tableSize = it }
                     ) {
                         Box(
                             Modifier
                                 .fillMaxSize()
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(felt)
-                                .border(1.dp, Color(0xFF0D3B0D), RoundedCornerShape(6.dp)),
-                            contentAlignment = Alignment.Center
+                                .border(1.dp, Color(0xFF0D3B0D), RoundedCornerShape(6.dp))
                         ) {
                             if (state.board.isEmpty) {
-                                Text(
-                                    "Esperando salida del 6-6...",
-                                    color = Color.White.copy(0.45f),
-                                    fontSize = 13.sp
-                                )
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        "Esperando salida del 6-6...",
+                                        color = Color.White.copy(0.45f),
+                                        fontSize = 13.sp
+                                    )
+                                }
                             } else {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    // Extremos destacados
-                                    Surface(
-                                        color = Color(0xFF0D3B0D),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text(
-                                            "  ${state.board.leftEnd}   ← extremos →   ${state.board.rightEnd}  ",
-                                            color = gold,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                val density = LocalDensity.current
+                                val placed = remember(state.board, tableSize) {
+                                    if (tableSize.width > 0) {
+                                        BoardLayout.layout(
+                                            state.board,
+                                            tableSize.width.toFloat(),
+                                            tableSize.height.toFloat()
                                         )
-                                    }
-                                    Row(
-                                        modifier = Modifier
-                                            .horizontalScroll(rememberScrollState())
-                                            .padding(horizontal = 4.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        state.board.chain.forEach { ot ->
-                                            DominoTileView(
-                                                tile = ot.tile,
-                                                width = if (ot.isDouble) 40.dp else 30.dp,
-                                                height = if (ot.isDouble) 30.dp else 52.dp,
-                                                faceUp = true,
-                                                horizontalDouble = ot.isDouble
+                                    } else emptyList()
+                                }
+
+                                Canvas(Modifier.fillMaxSize()) {
+                                    val cx = size.width / 2
+                                    val cy = size.height / 2
+                                    for (p in placed) {
+                                        val w = if (p.isDouble) BoardLayout.TILE_LONG else BoardLayout.TILE_SHORT
+                                        val h = if (p.isDouble) BoardLayout.TILE_SHORT else BoardLayout.TILE_LONG
+                                        // Ajuste: cuando rotation es 90, intercambiamos visualmente
+                                        val drawW = if (p.rotationDeg % 180f == 90f) h else w
+                                        val drawH = if (p.rotationDeg % 180f == 90f) w else h
+
+                                        rotate(p.rotationDeg, pivot = Offset(cx + p.x, cy + p.y)) {
+                                            drawDominoFace(
+                                                tile = p.tile,
+                                                topLeft = Offset(cx + p.x - drawW / 2, cy + p.y - drawH / 2),
+                                                width = drawW,
+                                                height = drawH
                                             )
                                         }
+                                    }
+                                }
+
+                                // Extremos
+                                Column(
+                                    Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Surface(color = Color(0xFF0D3B0D), shape = RoundedCornerShape(8.dp)) {
+                                        Text(
+                                            "  ${state.board.leftEnd}  ← →  ${state.board.rightEnd}  ",
+                                            color = gold,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
                                     }
                                 }
                             }
@@ -217,14 +240,10 @@ fun GameScreen(
                 }
             }
 
-            // Botón JUGAR
             if (selected != null && state.currentPlayer == PlayerId.SOUTH && state.phase == GameState.Phase.PLAYING) {
                 Button(
                     onClick = { viewModel.onPlaySelected() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 6.dp)
-                        .height(48.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -232,14 +251,10 @@ fun GameScreen(
                 }
             }
 
-            // Botón PASAR
             if (canPass) {
                 Button(
                     onClick = { viewModel.onPass() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 6.dp)
-                        .height(48.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBF360C)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -281,6 +296,57 @@ fun GameScreen(
                 }
                 else -> {}
             }
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDominoFace(
+    tile: Tile,
+    topLeft: Offset,
+    width: Float,
+    height: Float
+) {
+    val radius = 4f
+    // Sombra
+    drawRoundRect(Color.Black.copy(0.3f), topLeft + Offset(1.5f, 2f), Size(width, height), CornerRadius(radius))
+    // Cuerpo
+    drawRoundRect(Color(0xFFF8F1E3), topLeft, Size(width, height), CornerRadius(radius))
+    // Borde
+    drawRoundRect(Color(0xFF4E342E), topLeft, Size(width, height), CornerRadius(radius), style = Stroke(1.5f))
+
+    val mid = height / 2
+    drawLine(
+        Color(0xFF5D4037).copy(0.5f),
+        topLeft + Offset(4f, mid),
+        topLeft + Offset(width - 4f, mid),
+        strokeWidth = 1.2f
+    )
+
+    drawPipsSimple(tile.left, topLeft, Size(width, mid))
+    drawPipsSimple(tile.right, topLeft + Offset(0f, mid), Size(width, mid))
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPipsSimple(
+    value: Int,
+    origin: Offset,
+    area: Size
+) {
+    val cx = origin.x + area.width / 2
+    val cy = origin.y + area.height / 2
+    val r = minOf(area.width, area.height) * 0.09f
+    val o = minOf(area.width, area.height) * 0.22f
+    val color = Color(0xFF1C1C1C)
+    fun p(x: Float, y: Float) = drawCircle(color, r, Offset(x, y))
+    when (value) {
+        1 -> p(cx, cy)
+        2 -> { p(cx - o, cy - o); p(cx + o, cy + o) }
+        3 -> { p(cx - o, cy - o); p(cx, cy); p(cx + o, cy + o) }
+        4 -> { p(cx - o, cy - o); p(cx + o, cy - o); p(cx - o, cy + o); p(cx + o, cy + o) }
+        5 -> { p(cx - o, cy - o); p(cx + o, cy - o); p(cx, cy); p(cx - o, cy + o); p(cx + o, cy + o) }
+        6 -> {
+            p(cx - o, cy - o); p(cx + o, cy - o)
+            p(cx - o, cy); p(cx + o, cy)
+            p(cx - o, cy + o); p(cx + o, cy + o)
         }
     }
 }
