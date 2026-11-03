@@ -5,12 +5,12 @@ import com.lamesa.dominodominicano.domain.PlayerId
 import com.lamesa.dominodominicano.domain.Tile
 
 /**
- * Layout ESTABLE e impoluto:
- * - Ficha de salida anclada en (0,0)
- * - Al añadir fichas, las ya colocadas NO se mueven
- * - Matching: leftIsLeft orienta el número correcto hacia el vecino
- * - Tamaño uniforme
- * - Dobles transversales
+ * Layout ESTABLE:
+ * - Salida anclada en (0,0) via starterIndex
+ * - Fichas ya colocadas no se mueven al crecer la cadena
+ * - No-dobles alineados al eje de la cadena (rot 90)
+ * - Dobles transversales (rot 0)
+ * - leftIsLeft orienta el numero correcto hacia el vecino
  */
 object BoardLayout {
 
@@ -25,7 +25,6 @@ object BoardLayout {
         val y: Float,
         val rotationDeg: Float,
         val playedBy: PlayerId?,
-        /** Si true, la mitad "left" del dibujo está hacia -X (izquierda de la cadena). */
         val leftIsLeft: Boolean
     )
 
@@ -33,16 +32,15 @@ object BoardLayout {
         if (board.isEmpty) return emptyList()
         val chain = board.chain
         val starterIdx = board.starterIndex.coerceIn(0, chain.lastIndex)
-
-        // Paso uniforme: cada ficha ocupa el mismo espacio horizontal
-        val step = TILE_W + GAP
+        // Paso: longitud de ficha a lo largo de la cadena + gap
+        val step = TILE_H + GAP // no-doble horizontal usa TILE_H como largo a lo largo del eje
 
         return chain.mapIndexed { i, ot ->
-            // Offset relativo al starter: negativo a la izquierda, positivo a la derecha
             val offset = (i - starterIdx).toFloat()
             val x = offset * step
             val y = 0f
-            val rot = if (ot.isDouble) 90f else 0f
+            // Cadena horizontal: no-doble se acuesta (90), doble queda transversal (0)
+            val rot = if (ot.isDouble) 0f else 90f
             PlacedTile(
                 tile = ot.tile,
                 isDouble = ot.isDouble,
