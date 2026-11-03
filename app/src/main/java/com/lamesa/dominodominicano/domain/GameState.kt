@@ -1,8 +1,5 @@
 package com.lamesa.dominodominicano.domain
 
-/**
- * Estado completo de una partida de Dominó Dominicano.
- */
 data class GameState(
     val config: GameConfig = GameConfig(),
     val hands: Map<PlayerId, List<Tile>> = emptyMap(),
@@ -17,13 +14,13 @@ data class GameState(
     val phase: Phase = Phase.DEALING,
     val lastMove: Move? = null,
     val bonusesThisHand: List<BonusEvent> = emptyList(),
+    val allBonuses: List<BonusEvent> = emptyList(), // persistente durante la partida
+    val passHistory: List<PassRecord> = emptyList(), // historial de pases
     val winnerOfHand: PlayerId? = null,
     val winnerOfGame: String? = null,
     val message: String? = null
 ) {
-    enum class Phase {
-        DEALING, PLAYING, HAND_OVER, GAME_OVER
-    }
+    enum class Phase { DEALING, PLAYING, HAND_OVER, GAME_OVER }
 
     data class Move(
         val player: PlayerId,
@@ -35,22 +32,23 @@ data class GameState(
     data class BonusEvent(
         val type: BonusType,
         val player: PlayerId,
-        val points: Int
+        val points: Int,
+        val handNumber: Int = 0
     )
 
-    enum class BonusType {
-        CAPICUA, PASO_REDONDO, PASE_DE_SALIDA, CHUCHAZO
-    }
+    enum class BonusType { CAPICUA, PASO_REDONDO, PASE_DE_SALIDA, CHUCHAZO }
 
-    fun teamOf(player: PlayerId): String = if (player == PlayerId.SOUTH || player == PlayerId.NORTH) "us" else "them"
+    data class PassRecord(
+        val player: PlayerId,
+        val leftEnd: Int?,
+        val rightEnd: Int?,
+        val handNumber: Int
+    )
+
+    fun teamOf(player: PlayerId): String =
+        if (player == PlayerId.SOUTH || player == PlayerId.NORTH) "us" else "them"
 
     fun handOf(player: PlayerId): List<Tile> = hands[player] ?: emptyList()
 
     fun remainingPoints(player: PlayerId): Int = handOf(player).sumOf { it.points }
-
-    fun isGameOver(): Boolean {
-        val us = scores["us"] ?: 0
-        val them = scores["them"] ?: 0
-        return us >= config.goal || them >= config.goal
-    }
 }
