@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -19,14 +20,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lamesa.dominodominicano.domain.*
 import com.lamesa.dominodominicano.ui.components.DominoTileView
 
-/**
- * Pantalla de juego reconstruida según estándares de apps de dominó profesionales:
- * - Mesa central con fieltro + marco de madera
- * - Compañero arriba, rivales a los lados, mano del jugador abajo grande
- * - Marcador centrado
- * - One-tap / select + botón Jugar claro
- * - Indicadores de turno y estado visibles
- */
 @Composable
 fun GameScreen(
     onMenu: () -> Unit = {},
@@ -36,6 +29,9 @@ fun GameScreen(
     val state by viewModel.state.collectAsState()
     val selected by viewModel.selected.collectAsState()
     val legal = remember(state) { viewModel.legalTiles() }
+    val canPass = state.currentPlayer == PlayerId.SOUTH &&
+            state.phase == GameState.Phase.PLAYING &&
+            legal.isEmpty()
 
     val bg = Color(0xFF0B1A0B)
     val wood = Color(0xFF8B5A2B)
@@ -52,7 +48,7 @@ fun GameScreen(
     ) {
         Column(Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 4.dp)) {
 
-            // ---------- TOP BAR ----------
+            // TOP BAR
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -85,7 +81,7 @@ fun GameScreen(
 
             Spacer(Modifier.height(4.dp))
 
-            // ---------- COMPAÑERO ----------
+            // COMPAÑERO
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     repeat(state.handOf(PlayerId.NORTH).size.coerceAtMost(7)) {
@@ -98,19 +94,13 @@ fun GameScreen(
 
             Spacer(Modifier.height(4.dp))
 
-            // ---------- MESA + LATERALES ----------
+            // MESA + LATERALES
             Row(
                 Modifier.weight(1f).fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Izquierda (West)
-                OpponentColumn(
-                    name = "El de arriba",
-                    color = Color(0xFFFFA000),
-                    count = state.handOf(PlayerId.WEST).size
-                )
+                OpponentColumn("El de arriba", Color(0xFFFFA000), state.handOf(PlayerId.WEST).size)
 
-                // Mesa
                 Box(
                     Modifier.weight(1f).fillMaxHeight().padding(horizontal = 4.dp),
                     contentAlignment = Alignment.Center
@@ -139,7 +129,7 @@ fun GameScreen(
                                 )
                             } else {
                                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    state.board.chain.take(11).forEach { ot ->
+                                    state.board.chain.take(12).forEach { ot ->
                                         DominoTileView(
                                             ot.tile,
                                             width = if (ot.isDouble) 32.dp else 24.dp,
@@ -153,22 +143,16 @@ fun GameScreen(
                     }
                 }
 
-                // Derecha (East)
-                OpponentColumn(
-                    name = "El de abajo",
-                    color = Color(0xFFE53935),
-                    count = state.handOf(PlayerId.EAST).size
-                )
+                OpponentColumn("El de abajo", Color(0xFFE53935), state.handOf(PlayerId.EAST).size)
             }
 
-            // Label Tú
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 LabelChip("Tú", Color(0xFF1565C0))
             }
 
             Spacer(Modifier.height(3.dp))
 
-            // ---------- MANO DEL JUGADOR ----------
+            // MANO DEL JUGADOR
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -180,34 +164,41 @@ fun GameScreen(
                     state.handOf(PlayerId.SOUTH).forEach { tile ->
                         val isSel = selected == tile
                         val isLeg = tile in legal
-                        DominoTileView(
-                            tile = tile,
-                            width = 44.dp,
-                            height = 80.dp,
-                            selected = isSel,
-                            faceUp = true,
-                            onClick = { viewModel.onTileTapped(tile) }
-                        )
+                        Box(modifier = Modifier.alpha(if (state.currentPlayer == PlayerId.SOUTH && !isLeg && legal.isNotEmpty()) 0.45f else 1f)) {
+                            DominoTileView(
+                                tile = tile,
+                                width = 44.dp,
+                                height = 80.dp,
+                                selected = isSel,
+                                faceUp = true,
+                                onClick = { viewModel.onTileTapped(tile) }
+                            )
+                        }
                     }
                 }
             }
 
-            // Botón JUGAR (solo cuando hay selección legal)
+            // Botón JUGAR
             if (selected != null && state.currentPlayer == PlayerId.SOUTH && state.phase == GameState.Phase.PLAYING) {
                 Button(
                     onClick = { viewModel.onPlaySelected() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 6.dp)
-                        .height(48.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(
-                        "JUGAR  ${selected!!.left}-${selected!!.right}",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("JUGAR  ${selected!!.left}-${selected!!.right}", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Botón PASAR (solo cuando no hay jugadas legales)
+            if (canPass) {
+                Button(
+                    onClick = { viewModel.onPass() },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBF360C)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("PASAR", fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -222,7 +213,6 @@ fun GameScreen(
                 )
             }
 
-            // Controles de fin de mano / partida
             when (state.phase) {
                 GameState.Phase.HAND_OVER -> {
                     Button(
